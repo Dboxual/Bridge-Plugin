@@ -5,12 +5,16 @@ import com.thebridge.arena.Arena;
 import com.thebridge.arena.ArenaState;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +55,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setpos2"      -> handleSetLoc(sender, args, Field.POS2);
             case "save"         -> handleSave(sender, args);
             case "reset"        -> handleReset(sender, args);
+            case "setsign"      -> handleSetSign(sender, args);
             default             -> sendUsage(sender);
         }
         return true;
@@ -134,6 +139,13 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        List<String> worldMismatch = getWorldMismatch(arena);
+        if (!worldMismatch.isEmpty()) {
+            sender.sendMessage(PREFIX + "§cAll arena locations must be in the same world. Mismatched fields: §e"
+                    + String.join(", ", worldMismatch));
+            return;
+        }
+
         sender.sendMessage(PREFIX + "§eSaving '§b" + arena.getId() + "§e'...");
 
         plugin.getSchematicManager().saveArena(arena).whenComplete((ok, err) ->
@@ -183,6 +195,47 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         );
     }
 
+    private void handleSetSign(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command.");
+            return;
+        }
+        if (args.length < 2) { usage(sender, "setsign <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+
+        Block target = player.getTargetBlockExact(5);
+        if (target == null || !(target.getState() instanceof Sign)) {
+            sender.sendMessage(PREFIX + "§cLook at a sign block to register it.");
+            return;
+        }
+        arena.addSign(target.getLocation());
+        plugin.getArenaManager().saveArena(arena);
+        plugin.getQueueManager().updateSigns(arena);
+        sender.sendMessage(PREFIX + "§aSign registered for arena §e" + arena.getId() + "§a.");
+    }
+
+    private List<String> getWorldMismatch(Arena arena) {
+        World ref = arena.getPos1() != null ? arena.getPos1().getWorld() : null;
+        if (ref == null) return List.of();
+        List<String> bad = new ArrayList<>();
+        record LocEntry(String name, Location loc) {}
+        List<LocEntry> entries = List.of(
+                new LocEntry("pos2",       arena.getPos2()),
+                new LocEntry("red-spawn",  arena.getRedSpawn()),
+                new LocEntry("blue-spawn", arena.getBlueSpawn()),
+                new LocEntry("lobby-spawn", arena.getLobbySpawn()),
+                new LocEntry("red-goal",   arena.getRedGoal()),
+                new LocEntry("blue-goal",  arena.getBlueGoal())
+        );
+        for (LocEntry e : entries) {
+            if (e.loc() != null && e.loc().getWorld() != null && !ref.equals(e.loc().getWorld())) {
+                bad.add(e.name());
+            }
+        }
+        return bad;
+    }
+
     // ── Tab completion ────────────────────────────────────────────────────────
 
     @Override
@@ -194,7 +247,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setpos1", "setpos2",
-                    "save", "reset"), args[0]);
+                    "setsign", "save", "reset"), args[0]);
         }
         if (args.length == 2 && !args[0].equalsIgnoreCase("list")) {
             return plugin.getArenaManager().getAllArenas().stream()
@@ -232,6 +285,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setbluegoal §f<arena>    §7Set blue goal at your location");
         sender.sendMessage("  §b/bridge setpos1 §f<arena>        §7Set reset region corner 1");
         sender.sendMessage("  §b/bridge setpos2 §f<arena>        §7Set reset region corner 2");
+        sender.sendMessage("  §b/bridge setsign §f<arena>        §7Register the sign you're looking at");
         sender.sendMessage("  §b/bridge save §f<arena>           §7Save arena region as schematic");
         sender.sendMessage("  §b/bridge reset §f<arena>          §7Restore arena from schematic");
     }

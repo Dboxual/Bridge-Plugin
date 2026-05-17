@@ -1,6 +1,6 @@
 # TheBridge
 
-A Paper 1.21.x plugin for running The Bridge minigame. This repo contains **Stage 1 only** — arena infrastructure. No gameplay has been implemented yet.
+A Paper 1.21.x plugin for running The Bridge minigame — 1v1 bridge-crossing with goal scoring, automatic arena resets, and queue signs.
 
 ---
 
@@ -16,15 +16,21 @@ The plugin **will not load** unless FAWE is installed on the server.
 
 ---
 
-## World setup
+## How it works
 
-Create a world named `bridge` on your server. All arenas must be placed inside this world. The world name is configurable in `config.yml` (`settings.world`).
+- Arenas work in **any world** — the world is derived automatically from the location you're standing in when you run each `set*` command.
+- Players right-click a registered **queue sign** to join or leave the queue for an arena.
+- When 2 players are queued, the match starts automatically after a countdown.
+- Players score by stepping on the **opponent's goal block**.
+- After each point the arena resets via FAWE and a new countdown begins.
+- First to **5 points** wins. Both players are sent to `lobbySpawn` when the match ends.
+- A player disconnecting mid-match forfeits to their opponent.
 
 ---
 
 ## Commands
 
-All commands require the `bridge.admin` permission (default: OP).
+### Admin commands (`bridge.admin` — default: OP)
 
 | Command | Description |
 |---|---|
@@ -38,6 +44,7 @@ All commands require the `bridge.admin` permission (default: OP).
 | `/bridge setbluegoal <arena>` | Set blue team goal at your location |
 | `/bridge setpos1 <arena>` | Set reset region corner 1 at your location |
 | `/bridge setpos2 <arena>` | Set reset region corner 2 at your location |
+| `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
 | `/bridge save <arena>` | Save the arena region as a schematic |
 | `/bridge reset <arena>` | Restore the arena from its saved schematic |
 
@@ -46,10 +53,11 @@ All commands require the `bridge.admin` permission (default: OP).
 ## Arena setup flow
 
 1. `create` a new arena.
-2. Stand at each location and run the appropriate `set*` command.
-3. Set `pos1` and `pos2` around the full arena area you want to reset.
-4. Run `/bridge save` — this copies the region into `plugins/TheBridge/schematics/<name>.schem`.
-5. From this point, `/bridge reset` will fully restore the arena to this saved state.
+2. Stand at each location and run the corresponding `set*` command. The world is saved automatically from wherever you are standing — no world configuration needed.
+3. Set `pos1` and `pos2` around the full arena area to be reset between points.
+4. Run `/bridge save` — copies the region into `plugins/TheBridge/schematics/<name>.schem`.
+5. Place a sign, look at it, and run `/bridge setsign <arena>` to register it as a queue sign.
+6. Players can now right-click the sign to join the queue. When 2 players queue, the match begins.
 
 ---
 
@@ -57,8 +65,9 @@ All commands require the `bridge.admin` permission (default: OP).
 
 ```yaml
 settings:
-  world: bridge                # World containing all arenas
   schematics-folder: schematics  # Subfolder inside plugin data dir
+  countdown-seconds: 5           # Seconds before a match or reset starts
+  points-to-win: 5               # Points needed to win a match
 ```
 
 ---
@@ -68,22 +77,11 @@ settings:
 Gradle is present for IDE support. Actual compilation uses `build.sh` (Java 25 / Gradle 8.x incompatibility).
 
 ```bash
-# 1. Copy shared libs from Pinpoint/libs and download FAWE:
+# 1. Copy shared libs from Pinpoint/libs and place FAWE:
 cp ../Pinpoint/libs/*.jar libs/
-# Download FastAsyncWorldEdit for Paper 1.21.x, rename to fawe-bukkit.jar
+# Copy FastAsyncWorldEdit for Paper 1.21.x into libs/ as fawe-bukkit.jar
 
 # 2. Build
 bash build.sh
-# Output: build/TheBridge-1.0.0.jar
+# Output: build/TheBridge-1.1.0.jar
 ```
-
----
-
-## Stage 2 (planned)
-
-- Match sessions with player join/leave
-- Score tracking (goals)
-- Kit system
-- Spectator support
-- Party-based team assignment
-- Automatic arena reset between rounds

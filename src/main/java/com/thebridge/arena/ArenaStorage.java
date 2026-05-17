@@ -11,19 +11,31 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 
 /**
  * Reads and writes arena data to arenas.yml.
+ *
+ * Each location stores its own world name — there is no global arena world.
+ * Arenas in different worlds coexist without configuration.
  *
  * Format:
  *   arenas:
  *     <id>:
  *       enabled: false
  *       schematic-name: <id>
- *       red-spawn: { world, x, y, z, yaw, pitch }
- *       ...
+ *       red-spawn:  { world, x, y, z, yaw, pitch }
+ *       blue-spawn: { ... }
+ *       lobby-spawn: { ... }
+ *       red-goal:   { ... }
+ *       blue-goal:  { ... }
+ *       pos1:       { ... }
+ *       pos2:       { ... }
+ *       signs:
+ *         - { world, x, y, z }
  */
 public class ArenaStorage {
 
@@ -67,8 +79,7 @@ public class ArenaStorage {
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
             if (s == null) continue;
-            Arena arena = deserializeArena(id, s);
-            result.add(arena);
+            result.add(deserializeArena(id, s));
         }
         return result;
     }
@@ -84,6 +95,7 @@ public class ArenaStorage {
         arena.setBlueGoal(readLocation(s, "blue-goal"));
         arena.setPos1(readLocation(s, "pos1"));
         arena.setPos2(readLocation(s, "pos2"));
+        arena.setSignLocations(readSigns(s));
         return arena;
     }
 
@@ -93,13 +105,14 @@ public class ArenaStorage {
         String base = "arenas." + arena.getId();
         config.set(base + ".enabled", arena.isEnabled());
         config.set(base + ".schematic-name", arena.getSchematicName());
-        writeLocation(base + ".red-spawn", arena.getRedSpawn());
+        writeLocation(base + ".red-spawn",  arena.getRedSpawn());
         writeLocation(base + ".blue-spawn", arena.getBlueSpawn());
         writeLocation(base + ".lobby-spawn", arena.getLobbySpawn());
-        writeLocation(base + ".red-goal", arena.getRedGoal());
-        writeLocation(base + ".blue-goal", arena.getBlueGoal());
-        writeLocation(base + ".pos1", arena.getPos1());
-        writeLocation(base + ".pos2", arena.getPos2());
+        writeLocation(base + ".red-goal",   arena.getRedGoal());
+        writeLocation(base + ".blue-goal",  arena.getBlueGoal());
+        writeLocation(base + ".pos1",       arena.getPos1());
+        writeLocation(base + ".pos2",       arena.getPos2());
+        writeSigns(base + ".signs", arena.getSignLocations());
         flush();
     }
 
@@ -115,10 +128,15 @@ public class ArenaStorage {
             config.set(path, null);
             return;
         }
-        config.set(path + ".world", loc.getWorld() != null ? loc.getWorld().getName() : plugin.getWorldName());
-        config.set(path + ".x", loc.getX());
-        config.set(path + ".y", loc.getY());
-        config.set(path + ".z", loc.getZ());
+        String worldName = loc.getWorld() != null ? loc.getWorld().getName() : null;
+        if (worldName == null) {
+            config.set(path, null);
+            return;
+        }
+        config.set(path + ".world", worldName);
+        config.set(path + ".x",     loc.getX());
+        config.set(path + ".y",     loc.getY());
+        config.set(path + ".z",     loc.getZ());
         config.set(path + ".yaw",   (double) loc.getYaw());
         config.set(path + ".pitch", (double) loc.getPitch());
     }
@@ -126,9 +144,15 @@ public class ArenaStorage {
     private Location readLocation(ConfigurationSection parent, String key) {
         ConfigurationSection s = parent.getConfigurationSection(key);
         if (s == null || !s.contains("x")) return null;
-        String worldName = s.getString("world", plugin.getWorldName());
+
+        String worldName = s.getString("world");
+        if (worldName == null) return null;
+
         World world = Bukkit.getWorld(worldName);
-        if (world == null) return null;
+        if (world == null) {
+            plugin.getLogger().warning("World '" + worldName + "' is not loaded — location '" + key + "' skipped.");
+            return null;
+        }
         return new Location(
                 world,
                 s.getDouble("x"),
@@ -137,5 +161,46 @@ public class ArenaStorage {
                 (float) s.getDouble("yaw", 0),
                 (float) s.getDouble("pitch", 0)
         );
+    }
+
+    // ── Sign helpers ──────────────────────────────────────────────────────────
+
+    private void writeSigns(String path, List<Location> signs) {
+        if (signs.isEmpty()) {
+            config.set(path, null);
+            return;
+        }
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Location loc : signs) {
+            if (loc.getWorld() == null) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("world", loc.getWorld().getName());
+            m.put("x", loc.getBlockX());
+            m.put("y", loc.getBlockY());
+            m.put("z", loc.getBlockZ());
+            list.add(m);
+        }
+        config.set(path, list.isEmpty() ? null : list);
+    }
+
+    private List<Location> readSigns(ConfigurationSection s) {
+        List<Location> result = new ArrayList<>();
+        List<?> raw = s.getList("signs");
+        if (raw == null) return result;
+        for (Object entry : raw) {
+            if (!(entry instanceof Map<?, ?> map)) continue;
+            Object wObj = map.get("world");
+            Object xObj = map.get("x");
+            Object yObj = map.get("y");
+            Object zObj = map.get("z");
+            if (wObj == null || xObj == null || yObj == null || zObj == null) continue;
+            World world = Bukkit.getWorld(wObj.toString());
+            if (world == null) continue;
+            result.add(new Location(world,
+                    ((Number) xObj).intValue(),
+                    ((Number) yObj).intValue(),
+                    ((Number) zObj).intValue()));
+        }
+        return result;
     }
 }

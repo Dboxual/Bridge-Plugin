@@ -2,23 +2,31 @@
 
 ## Project purpose
 
-TheBridge is a Paper 1.21.x minigame plugin for The Bridge (players score by crossing a bridge into the opponent's goal area). This repo currently contains Stage 1 only: arena infrastructure — no gameplay logic exists yet.
+TheBridge is a Paper 1.21.x minigame plugin for The Bridge (players score by stepping on the opponent's goal block). Stage 2 is complete: full 1v1 match flow including queue signs, countdowns, goal detection, arena resets between rounds, and disconnect handling.
 
 ---
 
 ## Architecture
 
 ```
-TheBridgePlugin               — entry point; wires all managers
+TheBridgePlugin               — entry point; wires all managers + registers listeners
   ArenaManager                — in-memory arena registry, CRUD
-    ArenaStorage              — YAML persistence (arenas.yml)
-    Arena                     — model: spawns, goals, region, state
+    ArenaStorage              — YAML persistence (arenas.yml), includes sign locations
+    Arena                     — model: spawns, goals, region, signs, state
     ArenaState                — enum: DISABLED, WAITING, STARTING, IN_GAME, RESETTING
-  SchematicManager            — FAWE save/restore (async)
-  BridgeCommand               — /bridge subcommands + tab completion
+  SchematicManager            — FAWE async save/restore
+  MatchManager                — tracks active BridgeMatch instances
+    BridgeMatch               — single match: countdown, scoring, reset, forfeit
+  QueueManager                — per-arena player queues; starts match when 2 queued
+  BridgeCommand               — /bridge admin subcommands + tab completion
+  SignListener                — right-click queue sign → join/leave queue
+  GoalListener                — PlayerMoveEvent → goal detection (block-change only)
+  MatchListener               — PlayerQuitEvent → queue leave or match forfeit
 ```
 
-### Arena model
+---
+
+## Arena model
 
 `Arena.java` holds every piece of per-arena data:
 
@@ -26,48 +34,64 @@ TheBridgePlugin               — entry point; wires all managers
 |---|---|
 | `id` | Unique lowercase identifier; immutable after creation |
 | `redSpawn`, `blueSpawn` | Team spawn points used at match start |
-| `lobbySpawn` | Where players wait before the match |
-| `redGoal`, `blueGoal` | Locations that trigger scoring/win events |
+| `lobbySpawn` | Where players are sent after the match ends |
+| `redGoal`, `blueGoal` | Locations that trigger scoring when stepped on |
 | `pos1`, `pos2` | FAWE region corners for save/reset |
 | `schematicName` | Filename (without extension); defaults to `id` |
 | `enabled` | Whether the arena is open for play |
 | `state` | Current lifecycle phase (see `ArenaState`) |
+| `signs` | List of registered queue sign locations |
 
-`isFullyConfigured()` returns true only when every required location is set. `hasRegion()` checks only pos1/pos2 (the minimum for save/reset).
+Each `Location` stores its own world. There is no global arena world — the plugin works in any world automatically.
 
-### ArenaState lifecycle (current + future)
+`isFullyConfigured()` returns true when every required location is set. `hasRegion()` checks only pos1/pos2.
+
+---
+
+## ArenaState lifecycle
 
 ```
-DISABLED → WAITING → STARTING → IN_GAME → RESETTING → WAITING
+DISABLED → WAITING → IN_GAME → RESETTING → WAITING (loop)
+                            ↓
+                          ENDED (match over) → WAITING
 ```
 
-Stage 1 only sets `RESETTING` (during a `/bridge reset`). The other states are reserved for the match-session system in Stage 2.
+On startup, arenas that are fully configured and have a saved schematic are set to `WAITING`. Signs are only clickable in `WAITING` state.
 
-### SchematicManager — reset system detail
+---
 
-This is the most critical component. The reset system must be reliable because game sessions depend on a clean arena after every match.
+## Match flow
+
+1. Two players right-click a queue sign → `QueueManager.join()` → `MatchManager.createMatch()` → `BridgeMatch.start()`
+2. `start()`: clears inventories, teleports to spawns, broadcasts start message, runs countdown → `state = ACTIVE`
+3. `GoalListener` fires on every block-change move; calls `match.onGoalEntered(player)` if state is ACTIVE
+4. `onGoalEntered()`: verifies the player is on the correct goal block (`isSameBlock`), increments score
+5. If no win: `resetAndContinue()` — calls `SchematicManager.resetArena()` async, teleports back, runs countdown
+6. If win: `endMatch()` — announces winner, clears inventories, teleports both to `lobbySpawn`, sets arena back to `WAITING`
+7. Disconnect: `MatchListener` → `match.onPlayerDisconnect()` → `endMatch(opponent)`
+
+---
+
+## SchematicManager — reset system detail
 
 **Save flow:**
-1. Compute `min` and `max` block vectors from `pos1`/`pos2`.
-2. Build a `CuboidRegion` from those vectors.
-3. Copy the region into a `BlockArrayClipboard`. The clipboard's origin is automatically set to `region.getMinimumPoint()`.
+1. Derive world from `arena.getPos1().getWorld()` — no config lookup.
+2. Compute `min`/`max` block vectors from `pos1`/`pos2`.
+3. Copy region into `BlockArrayClipboard` (origin = min point).
 4. Write to `<schematics>/<name>.schem` using `BuiltInClipboardFormat.FAST`.
 
 **Reset flow:**
-1. Read the `.schem` file; format is auto-detected via `ClipboardFormats.findByFile()` (falls back to SPONGE_V2 if detection fails).
-2. Paste at `clipboard.getOrigin()` — which is the min block recorded at save time — so the arena lands in exactly the same position.
-3. `ignoreAirBlocks(false)` ensures air blocks in the schematic overwrite anything that was built during the match.
+1. Derive world from `arena.getPos1().getWorld()`.
+2. Read `.schem`; format auto-detected via `ClipboardFormats.findByFile()`.
+3. Paste at `clipboard.getOrigin()` (the saved min point) with `ignoreAirBlocks(false)`.
 
-**Threading:** Both operations use `CompletableFuture.runAsync`. FAWE manages chunk locking and queuing internally. Callbacks return to the main thread via `Bukkit.getScheduler().runTask()` before sending messages to the command sender.
+Both operations use `CompletableFuture.runAsync`. Callbacks return to the main thread via `Bukkit.getScheduler().runTask()`.
 
-**Guard rails:**
-- `/bridge save` requires `hasRegion()` — both pos1 and pos2 must be set.
-- `/bridge reset` requires the `.schem` file to exist — forces admins to save before resetting.
-- `/bridge reset` checks `arena.getState() == RESETTING` to prevent a double-reset if one is already in progress.
+---
 
-### ArenaStorage
+## ArenaStorage
 
-All arenas are stored in `arenas.yml`. Each arena is a section under `arenas.<id>`. Location fields are written as nested `world/x/y/z/yaw/pitch` values; null fields are omitted (set to null, which removes them from YAML). On load, missing or unknown worlds result in null Locations — the admin must re-run the relevant `set*` command after a world rename.
+All arenas stored in `arenas.yml` under `arenas.<id>`. Location fields: `world/x/y/z/yaw/pitch`. Signs: list of `{world, x, y, z}` maps. Null fields omitted. Unknown worlds on load produce null Locations with a warning.
 
 ---
 
@@ -76,32 +100,16 @@ All arenas are stored in `arenas.yml`. Each arena is a section under `arenas.<id
 Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 
 ```bash
-# Required jars in libs/ (copy from Pinpoint/libs + download FAWE):
+# Required jars in libs/:
 #   paper-api.jar, fawe-bukkit.jar, adventure-api.jar, adventure-key.jar,
 #   examination-api.jar, guava.jar, bungeecord-chat.jar, jetbrains-annotations.jar
+# Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.0.0.jar
+# Output: build/TheBridge-1.1.0.jar
 ```
 
-`build.gradle.kts` exists for IDE dependency resolution only.
-
----
-
-## Adding a new arena field (future stages)
-
-1. Add the field + getter/setter to `Arena.java`.
-2. Add read/write calls in `ArenaStorage.loadAll()` / `saveArena()` using the `readLocation` / `writeLocation` helpers (or add a new helper for non-Location types).
-3. Add the corresponding `/bridge set*` subcommand in `BridgeCommand.java` — add a new `Field` enum value, a case in the dispatch switch, and a `handleSetLoc` call (or a new handler if it's not a Location type).
-
-## Adding game sessions (Stage 2)
-
-The `ArenaState` enum already has `WAITING`, `STARTING`, `IN_GAME` placeholders. A future `MatchManager` (or `SessionManager`) will:
-- Query `arenaManager.getAllArenas()` filtered by `isEnabled()` + `isFullyConfigured()` + state `WAITING`
-- Assign players to a session, set state to `STARTING`/`IN_GAME`
-- Call `schematicManager.resetArena(arena)` after the session ends, then set state back to `WAITING`
-
-Nothing in Stage 1 needs to change to support this pattern.
+Classpath separator is `;` (Windows javac). `build.gradle.kts` exists for IDE dependency resolution only.
 
 ---
 

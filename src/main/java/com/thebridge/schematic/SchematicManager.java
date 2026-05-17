@@ -18,7 +18,6 @@ import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.arena.Arena;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 
@@ -78,11 +77,10 @@ public class SchematicManager {
                     new IllegalStateException("Region not set (run /bridge setpos1 and /bridge setpos2 first)."));
         }
 
-        // Capture world on the main thread — safe to read from async after this
-        World world = Bukkit.getWorld(plugin.getWorldName());
+        World world = arena.getPos1().getWorld();
         if (world == null) {
             return CompletableFuture.failedFuture(
-                    new IllegalStateException("World '" + plugin.getWorldName() + "' is not loaded."));
+                    new IllegalStateException("Arena '" + arena.getId() + "' world is not loaded."));
         }
 
         Location loc1 = arena.getPos1();
@@ -143,10 +141,10 @@ public class SchematicManager {
                     new IllegalStateException("Region not set — cannot determine paste location."));
         }
 
-        World world = Bukkit.getWorld(plugin.getWorldName());
+        World world = arena.getPos1().getWorld();
         if (world == null) {
             return CompletableFuture.failedFuture(
-                    new IllegalStateException("World '" + plugin.getWorldName() + "' is not loaded."));
+                    new IllegalStateException("Arena '" + arena.getId() + "' world is not loaded."));
         }
 
         return CompletableFuture.runAsync(() -> {
