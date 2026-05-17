@@ -1,0 +1,5 @@
+settings:
+  # Name of the Minecraft world that contains all arenas
+  world: bridge
+  # Subfolder inside the plugin data directory where schematics are stored
+  schematics-folder: schematics

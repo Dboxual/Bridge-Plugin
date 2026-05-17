@@ -1,0 +1,17 @@
+name: TheBridge
+version: '1.0.0'
+main: com.thebridge.TheBridgePlugin
+api-version: '1.21'
+description: The Bridge minigame — arena infrastructure
+depend: [FastAsyncWorldEdit]
+
+commands:
+  bridge:
+    description: TheBridge admin command
+    usage: /bridge <subcommand>
+    permission: bridge.admin
+
+permissions:
+  bridge.admin:
+    description: Access to all TheBridge admin commands
+    default: op
