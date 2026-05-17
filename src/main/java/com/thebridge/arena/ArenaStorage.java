@@ -27,13 +27,15 @@ import java.util.logging.Level;
  *     <id>:
  *       enabled: false
  *       schematic-name: <id>
- *       red-spawn:  { world, x, y, z, yaw, pitch }
- *       blue-spawn: { ... }
- *       lobby-spawn: { ... }
- *       red-goal:   { ... }
- *       blue-goal:  { ... }
- *       pos1:       { ... }
- *       pos2:       { ... }
+ *       red-spawn:       { world, x, y, z, yaw, pitch }
+ *       blue-spawn:      { ... }
+ *       lobby-spawn:     { ... }
+ *       red-goal-pos1:   { world, x, y, z }
+ *       red-goal-pos2:   { world, x, y, z }
+ *       blue-goal-pos1:  { world, x, y, z }
+ *       blue-goal-pos2:  { world, x, y, z }
+ *       pos1:            { ... }
+ *       pos2:            { ... }
  *       signs:
  *         - { world, x, y, z }
  */
@@ -91,8 +93,10 @@ public class ArenaStorage {
         arena.setRedSpawn(readLocation(s, "red-spawn"));
         arena.setBlueSpawn(readLocation(s, "blue-spawn"));
         arena.setLobbySpawn(readLocation(s, "lobby-spawn"));
-        arena.setRedGoal(readLocation(s, "red-goal"));
-        arena.setBlueGoal(readLocation(s, "blue-goal"));
+        arena.setRedGoalPos1(readLocation(s, "red-goal-pos1"));
+        arena.setRedGoalPos2(readLocation(s, "red-goal-pos2"));
+        arena.setBlueGoalPos1(readLocation(s, "blue-goal-pos1"));
+        arena.setBlueGoalPos2(readLocation(s, "blue-goal-pos2"));
         arena.setPos1(readLocation(s, "pos1"));
         arena.setPos2(readLocation(s, "pos2"));
         arena.setSignLocations(readSigns(s));
@@ -105,13 +109,15 @@ public class ArenaStorage {
         String base = "arenas." + arena.getId();
         config.set(base + ".enabled", arena.isEnabled());
         config.set(base + ".schematic-name", arena.getSchematicName());
-        writeLocation(base + ".red-spawn",  arena.getRedSpawn());
-        writeLocation(base + ".blue-spawn", arena.getBlueSpawn());
-        writeLocation(base + ".lobby-spawn", arena.getLobbySpawn());
-        writeLocation(base + ".red-goal",   arena.getRedGoal());
-        writeLocation(base + ".blue-goal",  arena.getBlueGoal());
-        writeLocation(base + ".pos1",       arena.getPos1());
-        writeLocation(base + ".pos2",       arena.getPos2());
+        writeLocation(base + ".red-spawn",      arena.getRedSpawn());
+        writeLocation(base + ".blue-spawn",     arena.getBlueSpawn());
+        writeLocation(base + ".lobby-spawn",    arena.getLobbySpawn());
+        writeLocation(base + ".red-goal-pos1",  arena.getRedGoalPos1());
+        writeLocation(base + ".red-goal-pos2",  arena.getRedGoalPos2());
+        writeLocation(base + ".blue-goal-pos1", arena.getBlueGoalPos1());
+        writeLocation(base + ".blue-goal-pos2", arena.getBlueGoalPos2());
+        writeLocation(base + ".pos1",           arena.getPos1());
+        writeLocation(base + ".pos2",           arena.getPos2());
         writeSigns(base + ".signs", arena.getSignLocations());
         flush();
     }

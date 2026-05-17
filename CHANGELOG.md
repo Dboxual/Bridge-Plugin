@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.1 — 2026-05-17
+### Fixed / Changed
+- **Goal regions replace single-block goals.** Each goal is now a selectable cuboid region (two corner blocks). Scoring triggers whenever a player's block position is inside the opponent's goal region. Inclusive block-coordinate check — generous for Bedrock/Geyser players.
+- **Per-player 2-second score cooldown.** Prevents duplicate scoring if a player bounces inside the region during a reset countdown.
+- **Bridge Setup Wand** (`/bridge wand`) — BLAZE_ROD with a PDC tag. Left-click sets pos1, right-click sets pos2. Selections stored per player; block breaks cancelled while holding the wand.
+- **`/bridge setredgoal <arena>` and `/bridge setbluegoal <arena>`** now use the wand selection instead of standing location.
+- **`/bridge showgoals <arena>`** — outlines both goal regions with colored dust particles for 10 seconds (red = red goal, blue = blue goal).
+- **`/bridge debug <arena>`** — prints arena world, all locations, goal regions, schematic path/existence, current state, and active match details (players, score, match state).
+- **Match cleanup hardened.** `PlayerChangedWorldEvent` and `PlayerTeleportEvent` both trigger a forfeit if the player leaves the arena world or teleports outside the arena region while a match is active. Plugin-initiated teleports (spawn, reset, end-of-match lobby) are flagged to avoid false forfeits.
+- **`endMatch` double-end guard.** `state == ENDED` check prevents re-entrant calls.
+- **`resetAndContinue` end guard.** If the match ends while FAWE is async-resetting, the whenComplete callback is a no-op.
+- **FAWE logging.** Console logs on reset start (arena, world, file path), paste origin, and reset complete/failed.
+- **`/bridge list`** now shows goal-region status alongside configured/schematic status.
+- **Cross-world validation in `/bridge save`** extended to include all four goal region corners.
+
 ## v1.1.0 — 2026-05-17
 ### Added
 - **Stage 2: basic 1v1 match flow.**

@@ -3,8 +3,12 @@ package com.thebridge.commands;
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.arena.Arena;
 import com.thebridge.arena.ArenaState;
+import com.thebridge.match.BridgeMatch;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
@@ -13,11 +17,13 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class BridgeCommand implements CommandExecutor, TabCompleter {
@@ -49,13 +55,16 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setredspawn"  -> handleSetLoc(sender, args, Field.RED_SPAWN);
             case "setbluespawn" -> handleSetLoc(sender, args, Field.BLUE_SPAWN);
             case "setlobby"     -> handleSetLoc(sender, args, Field.LOBBY_SPAWN);
-            case "setredgoal"   -> handleSetLoc(sender, args, Field.RED_GOAL);
-            case "setbluegoal"  -> handleSetLoc(sender, args, Field.BLUE_GOAL);
+            case "setredgoal"   -> handleSetGoalRegion(sender, args, true);
+            case "setbluegoal"  -> handleSetGoalRegion(sender, args, false);
             case "setpos1"      -> handleSetLoc(sender, args, Field.POS1);
             case "setpos2"      -> handleSetLoc(sender, args, Field.POS2);
+            case "wand"         -> handleWand(sender);
+            case "setsign"      -> handleSetSign(sender, args);
+            case "showgoals"    -> handleShowGoals(sender, args);
             case "save"         -> handleSave(sender, args);
             case "reset"        -> handleReset(sender, args);
-            case "setsign"      -> handleSetSign(sender, args);
+            case "debug"        -> handleDebug(sender, args);
             default             -> sendUsage(sender);
         }
         return true;
@@ -72,7 +81,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         }
         plugin.getArenaManager().createArena(id);
         sender.sendMessage(PREFIX + "§aArena '§e" + id + "§a' created. "
-                + "Use §b/bridge set*§a commands to configure it, then §b/bridge save§a.");
+                + "Use §b/bridge wand§a to select goal regions, then §b/bridge set*§a for spawns.");
     }
 
     private void handleDelete(CommandSender sender, String[] args) {
@@ -82,23 +91,22 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(PREFIX + "§cArena '§e" + id + "§c' not found.");
             return;
         }
-        sender.sendMessage(PREFIX + "§aArena '§e" + id + "§a' deleted from config. "
-                + "§7(Schematic file on disk was not removed.)");
+        sender.sendMessage(PREFIX + "§aArena '§e" + id + "§a' deleted. §7(Schematic not removed.)");
     }
 
     private void handleList(CommandSender sender) {
         Collection<Arena> all = plugin.getArenaManager().getAllArenas();
         if (all.isEmpty()) {
-            sender.sendMessage(PREFIX + "§7No arenas configured. Use §b/bridge create§7.");
+            sender.sendMessage(PREFIX + "§7No arenas configured.");
             return;
         }
         sender.sendMessage(PREFIX + "§eArenas §7(" + all.size() + ")§e:");
         for (Arena arena : all) {
             String configured = arena.isFullyConfigured() ? "§aconfigured" : "§cincomplete";
             String schematic  = plugin.getSchematicManager().hasSchematic(arena) ? "§aschematic" : "§7no schematic";
-            String enabledStr = arena.isEnabled() ? "§aenabled" : "§7disabled";
+            String goals = arena.hasRedGoal() && arena.hasBlueGoal() ? "§agoals" : "§cno goals";
             sender.sendMessage("  §7• §f" + arena.getId()
-                    + " §8[" + configured + "§8] [" + schematic + "§8] [" + enabledStr + "§8]");
+                    + " §8[" + configured + "§8] [" + schematic + "§8] [" + goals + "§8]");
         }
     }
 
@@ -115,18 +123,114 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         Location loc = player.getLocation();
 
         switch (field) {
-            case RED_SPAWN  -> arena.setRedSpawn(loc);
-            case BLUE_SPAWN -> arena.setBlueSpawn(loc);
+            case RED_SPAWN   -> arena.setRedSpawn(loc);
+            case BLUE_SPAWN  -> arena.setBlueSpawn(loc);
             case LOBBY_SPAWN -> arena.setLobbySpawn(loc);
-            case RED_GOAL   -> arena.setRedGoal(loc);
-            case BLUE_GOAL  -> arena.setBlueGoal(loc);
-            case POS1       -> arena.setPos1(loc);
-            case POS2       -> arena.setPos2(loc);
+            case POS1        -> arena.setPos1(loc);
+            case POS2        -> arena.setPos2(loc);
         }
 
         plugin.getArenaManager().saveArena(arena);
         sender.sendMessage(PREFIX + "§a" + field.label + " set for §e" + arena.getId()
                 + "§a at §7(" + fmtBlock(loc) + ")§a.");
+    }
+
+    private void handleSetGoalRegion(CommandSender sender, String[] args, boolean red) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        if (args.length < 2) { usage(sender, args[0] + " <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+
+        UUID uid = player.getUniqueId();
+        if (!plugin.getWandManager().hasSelection(uid)) {
+            sender.sendMessage(PREFIX + "§cNo wand selection. Run §e/bridge wand§c, then left/right-click two corner blocks.");
+            return;
+        }
+
+        Location p1 = plugin.getWandManager().getPos1(uid);
+        Location p2 = plugin.getWandManager().getPos2(uid);
+
+        if (p1.getWorld() == null || !p1.getWorld().equals(p2.getWorld())) {
+            sender.sendMessage(PREFIX + "§cBoth corners must be in the same world.");
+            return;
+        }
+
+        if (red) {
+            arena.setRedGoalPos1(p1);
+            arena.setRedGoalPos2(p2);
+            sender.sendMessage(PREFIX + "§cRed §rgoal region set for §e" + arena.getId()
+                    + "§r: §7(" + fmtBlock(p1) + ")§r → §7(" + fmtBlock(p2) + ")§r.");
+        } else {
+            arena.setBlueGoalPos1(p1);
+            arena.setBlueGoalPos2(p2);
+            sender.sendMessage(PREFIX + "§9Blue §rgoal region set for §e" + arena.getId()
+                    + "§r: §7(" + fmtBlock(p1) + ")§r → §7(" + fmtBlock(p2) + ")§r.");
+        }
+        plugin.getArenaManager().saveArena(arena);
+    }
+
+    private void handleWand(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        player.getInventory().addItem(plugin.getWandManager().createWand());
+        sender.sendMessage(PREFIX + "§aGiven §6Bridge Setup Wand§a. "
+                + "§7Left-click = pos1, right-click = pos2. "
+                + "Then run §b/bridge setredgoal§7 or §b/bridge setbluegoal§7.");
+    }
+
+    private void handleSetSign(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        if (args.length < 2) { usage(sender, "setsign <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+
+        Block target = player.getTargetBlockExact(5);
+        if (target == null || !(target.getState() instanceof Sign)) {
+            sender.sendMessage(PREFIX + "§cLook at a sign block to register it."); return;
+        }
+        arena.addSign(target.getLocation());
+        plugin.getArenaManager().saveArena(arena);
+        plugin.getQueueManager().updateSigns(arena);
+        sender.sendMessage(PREFIX + "§aSign registered for arena §e" + arena.getId() + "§a.");
+    }
+
+    private void handleShowGoals(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        if (args.length < 2) { usage(sender, "showgoals <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+
+        if (!arena.hasRedGoal() && !arena.hasBlueGoal()) {
+            sender.sendMessage(PREFIX + "§cNo goal regions defined for this arena."); return;
+        }
+
+        sender.sendMessage(PREFIX + "§eShowing goal regions for §b10§e seconds...");
+
+        Particle.DustOptions redDust  = new Particle.DustOptions(Color.RED,  1.5f);
+        Particle.DustOptions blueDust = new Particle.DustOptions(Color.BLUE, 1.5f);
+
+        new BukkitRunnable() {
+            int count = 0;
+            @Override
+            public void run() {
+                if (count++ >= 40) { cancel(); return; }
+                if (arena.hasRedGoal()) {
+                    outlineRegion(arena.getRedGoalPos1().getWorld(),
+                            arena.getRedGoalPos1(), arena.getRedGoalPos2(), redDust);
+                }
+                if (arena.hasBlueGoal()) {
+                    outlineRegion(arena.getBlueGoalPos1().getWorld(),
+                            arena.getBlueGoalPos1(), arena.getBlueGoalPos2(), blueDust);
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 5L);
     }
 
     private void handleSave(CommandSender sender, String[] args) {
@@ -141,7 +245,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
 
         List<String> worldMismatch = getWorldMismatch(arena);
         if (!worldMismatch.isEmpty()) {
-            sender.sendMessage(PREFIX + "§cAll arena locations must be in the same world. Mismatched fields: §e"
+            sender.sendMessage(PREFIX + "§cAll arena locations must be in the same world. Mismatched: §e"
                     + String.join(", ", worldMismatch));
             return;
         }
@@ -153,7 +257,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                 if (err != null) {
                     Throwable cause = err.getCause() != null ? err.getCause() : err;
                     sender.sendMessage(PREFIX + "§cSave failed: §7" + cause.getMessage());
-                    plugin.getLogger().warning("Save failed for " + arena.getId() + ": " + cause.getMessage());
+                    plugin.getLogger().warning("[Bridge] Save failed for " + arena.getId() + ": " + cause.getMessage());
                 } else {
                     sender.sendMessage(PREFIX + "§aArena '§b" + arena.getId()
                             + "§a' saved as §b" + arena.getSchematicName() + ".schem§a.");
@@ -168,8 +272,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         if (arena == null) return;
 
         if (!plugin.getSchematicManager().hasSchematic(arena)) {
-            sender.sendMessage(PREFIX + "§cNo schematic found for '§e" + arena.getId()
-                    + "§c'. Run §b/bridge save§c first.");
+            sender.sendMessage(PREFIX + "§cNo schematic for '§e" + arena.getId() + "§c'. Run §b/bridge save§c first.");
             return;
         }
         if (arena.getState() == ArenaState.RESETTING) {
@@ -187,7 +290,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                 if (err != null) {
                     Throwable cause = err.getCause() != null ? err.getCause() : err;
                     sender.sendMessage(PREFIX + "§cReset failed: §7" + cause.getMessage());
-                    plugin.getLogger().warning("Reset failed for " + arena.getId() + ": " + cause.getMessage());
+                    plugin.getLogger().warning("[Bridge] Reset failed for " + arena.getId() + ": " + cause.getMessage());
                 } else {
                     sender.sendMessage(PREFIX + "§aArena '§b" + arena.getId() + "§a' reset successfully.");
                 }
@@ -195,45 +298,89 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         );
     }
 
-    private void handleSetSign(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(PREFIX + "§cOnly players can use this command.");
-            return;
-        }
-        if (args.length < 2) { usage(sender, "setsign <arena>"); return; }
+    private void handleDebug(CommandSender sender, String[] args) {
+        if (args.length < 2) { usage(sender, "debug <arena>"); return; }
         Arena arena = resolveArena(sender, args[1]);
         if (arena == null) return;
 
-        Block target = player.getTargetBlockExact(5);
-        if (target == null || !(target.getState() instanceof Sign)) {
-            sender.sendMessage(PREFIX + "§cLook at a sign block to register it.");
-            return;
+        sender.sendMessage(PREFIX + "§e=== Debug: " + arena.getId() + " ===");
+        sender.sendMessage("§7State: §f" + arena.getState()
+                + "  Enabled: §f" + arena.isEnabled()
+                + "  Configured: §f" + arena.isFullyConfigured());
+        sender.sendMessage("§7World: §f" + (arena.getWorld() != null ? arena.getWorld().getName() : "not set"));
+        sender.sendMessage("§7Pos1: §f" + fmtLocFull(arena.getPos1()));
+        sender.sendMessage("§7Pos2: §f" + fmtLocFull(arena.getPos2()));
+        sender.sendMessage("§7Red spawn:  §f" + fmtLocFull(arena.getRedSpawn()));
+        sender.sendMessage("§7Blue spawn: §f" + fmtLocFull(arena.getBlueSpawn()));
+        sender.sendMessage("§7Lobby:      §f" + fmtLocFull(arena.getLobbySpawn()));
+        sender.sendMessage("§7Red goal:   §f" + fmtLocFull(arena.getRedGoalPos1()) + " §7→ §f" + fmtLocFull(arena.getRedGoalPos2()));
+        sender.sendMessage("§7Blue goal:  §f" + fmtLocFull(arena.getBlueGoalPos1()) + " §7→ §f" + fmtLocFull(arena.getBlueGoalPos2()));
+        sender.sendMessage("§7Schematic: §f" + arena.getSchematicName() + ".schem"
+                + "  Exists: §f" + plugin.getSchematicManager().hasSchematic(arena));
+        sender.sendMessage("§7Path: §f" + plugin.getSchematicManager().getSchematicFile(arena).getAbsolutePath());
+
+        BridgeMatch match = plugin.getMatchManager().getMatchByArena(arena.getId());
+        if (match != null) {
+            Player red  = Bukkit.getPlayer(match.getRedPlayer());
+            Player blue = Bukkit.getPlayer(match.getBluePlayer());
+            sender.sendMessage("§7Match: §aACTIVE §7(state=" + match.getState() + ")");
+            sender.sendMessage("§7  §cRed§7:  §f" + (red  != null ? red.getName()  : match.getRedPlayer())
+                    + " §7score=§c" + match.getRedScore());
+            sender.sendMessage("§7  §9Blue§7: §f" + (blue != null ? blue.getName() : match.getBluePlayer())
+                    + " §7score=§9" + match.getBlueScore());
+        } else {
+            sender.sendMessage("§7Match: §7none");
         }
-        arena.addSign(target.getLocation());
-        plugin.getArenaManager().saveArena(arena);
-        plugin.getQueueManager().updateSigns(arena);
-        sender.sendMessage(PREFIX + "§aSign registered for arena §e" + arena.getId() + "§a.");
     }
+
+    // ── Particle helpers ──────────────────────────────────────────────────────
+
+    private void outlineRegion(World world, Location p1, Location p2, Particle.DustOptions dust) {
+        if (world == null || p1 == null || p2 == null) return;
+        double step = 0.5;
+        double x1 = Math.min(p1.getBlockX(), p2.getBlockX());
+        double x2 = Math.max(p1.getBlockX(), p2.getBlockX()) + 1;
+        double y1 = Math.min(p1.getBlockY(), p2.getBlockY());
+        double y2 = Math.max(p1.getBlockY(), p2.getBlockY()) + 1;
+        double z1 = Math.min(p1.getBlockZ(), p2.getBlockZ());
+        double z2 = Math.max(p1.getBlockZ(), p2.getBlockZ()) + 1;
+        for (double x = x1; x <= x2; x += step) {
+            spawnDust(world, x, y1, z1, dust); spawnDust(world, x, y2, z1, dust);
+            spawnDust(world, x, y1, z2, dust); spawnDust(world, x, y2, z2, dust);
+        }
+        for (double y = y1; y <= y2; y += step) {
+            spawnDust(world, x1, y, z1, dust); spawnDust(world, x2, y, z1, dust);
+            spawnDust(world, x1, y, z2, dust); spawnDust(world, x2, y, z2, dust);
+        }
+        for (double z = z1; z <= z2; z += step) {
+            spawnDust(world, x1, y1, z, dust); spawnDust(world, x2, y1, z, dust);
+            spawnDust(world, x1, y2, z, dust); spawnDust(world, x2, y2, z, dust);
+        }
+    }
+
+    private void spawnDust(World world, double x, double y, double z, Particle.DustOptions dust) {
+        world.spawnParticle(Particle.DUST, x, y, z, 1, 0, 0, 0, 0, dust);
+    }
+
+    // ── World-mismatch helper ─────────────────────────────────────────────────
 
     private List<String> getWorldMismatch(Arena arena) {
         World ref = arena.getPos1() != null ? arena.getPos1().getWorld() : null;
         if (ref == null) return List.of();
         List<String> bad = new ArrayList<>();
-        record LocEntry(String name, Location loc) {}
-        List<LocEntry> entries = List.of(
-                new LocEntry("pos2",       arena.getPos2()),
-                new LocEntry("red-spawn",  arena.getRedSpawn()),
-                new LocEntry("blue-spawn", arena.getBlueSpawn()),
-                new LocEntry("lobby-spawn", arena.getLobbySpawn()),
-                new LocEntry("red-goal",   arena.getRedGoal()),
-                new LocEntry("blue-goal",  arena.getBlueGoal())
-        );
-        for (LocEntry e : entries) {
-            if (e.loc() != null && e.loc().getWorld() != null && !ref.equals(e.loc().getWorld())) {
-                bad.add(e.name());
-            }
-        }
+        checkWorld(bad, ref, arena.getPos2(),            "pos2");
+        checkWorld(bad, ref, arena.getRedSpawn(),        "red-spawn");
+        checkWorld(bad, ref, arena.getBlueSpawn(),       "blue-spawn");
+        checkWorld(bad, ref, arena.getLobbySpawn(),      "lobby-spawn");
+        checkWorld(bad, ref, arena.getRedGoalPos1(),     "red-goal-pos1");
+        checkWorld(bad, ref, arena.getRedGoalPos2(),     "red-goal-pos2");
+        checkWorld(bad, ref, arena.getBlueGoalPos1(),    "blue-goal-pos1");
+        checkWorld(bad, ref, arena.getBlueGoalPos2(),    "blue-goal-pos2");
         return bad;
+    }
+
+    private void checkWorld(List<String> bad, World ref, Location loc, String name) {
+        if (loc != null && loc.getWorld() != null && !ref.equals(loc.getWorld())) bad.add(name);
     }
 
     // ── Tab completion ────────────────────────────────────────────────────────
@@ -247,9 +394,11 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setpos1", "setpos2",
-                    "setsign", "save", "reset"), args[0]);
+                    "wand", "setsign", "showgoals",
+                    "save", "reset", "debug"), args[0]);
         }
-        if (args.length == 2 && !args[0].equalsIgnoreCase("list")) {
+        // wand takes no second argument
+        if (args.length == 2 && !args[0].equalsIgnoreCase("list") && !args[0].equalsIgnoreCase("wand")) {
             return plugin.getArenaManager().getAllArenas().stream()
                     .map(Arena::getId)
                     .filter(id -> id.startsWith(args[1].toLowerCase()))
@@ -281,17 +430,26 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setredspawn §f<arena>    §7Set red spawn at your location");
         sender.sendMessage("  §b/bridge setbluespawn §f<arena>   §7Set blue spawn at your location");
         sender.sendMessage("  §b/bridge setlobby §f<arena>       §7Set lobby/waiting spawn");
-        sender.sendMessage("  §b/bridge setredgoal §f<arena>     §7Set red goal at your location");
-        sender.sendMessage("  §b/bridge setbluegoal §f<arena>    §7Set blue goal at your location");
+        sender.sendMessage("  §b/bridge wand                    §7Get the goal-region selection wand");
+        sender.sendMessage("  §b/bridge setredgoal §f<arena>     §7Set red goal region (wand selection)");
+        sender.sendMessage("  §b/bridge setbluegoal §f<arena>    §7Set blue goal region (wand selection)");
+        sender.sendMessage("  §b/bridge showgoals §f<arena>      §7Show goal regions with particles (10s)");
         sender.sendMessage("  §b/bridge setpos1 §f<arena>        §7Set reset region corner 1");
         sender.sendMessage("  §b/bridge setpos2 §f<arena>        §7Set reset region corner 2");
         sender.sendMessage("  §b/bridge setsign §f<arena>        §7Register the sign you're looking at");
         sender.sendMessage("  §b/bridge save §f<arena>           §7Save arena region as schematic");
         sender.sendMessage("  §b/bridge reset §f<arena>          §7Restore arena from schematic");
+        sender.sendMessage("  §b/bridge debug §f<arena>          §7Dump full arena/match status");
     }
 
     private String fmtBlock(Location loc) {
         return loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ();
+    }
+
+    private String fmtLocFull(Location loc) {
+        if (loc == null) return "not set";
+        String world = loc.getWorld() != null ? loc.getWorld().getName() : "?";
+        return world + " (" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ() + ")";
     }
 
     private List<String> filter(List<String> opts, String prefix) {
@@ -300,14 +458,12 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                 .toList();
     }
 
-    // ── Field enum (avoids a pile of near-identical handler methods) ──────────
+    // ── Field enum ────────────────────────────────────────────────────────────
 
     private enum Field {
         RED_SPAWN("Red spawn"),
         BLUE_SPAWN("Blue spawn"),
         LOBBY_SPAWN("Lobby spawn"),
-        RED_GOAL("Red goal"),
-        BLUE_GOAL("Blue goal"),
         POS1("Pos1"),
         POS2("Pos2");
 

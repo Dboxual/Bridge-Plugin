@@ -7,41 +7,28 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Represents a single Bridge arena.
- *
- * All location fields are nullable — null means not yet configured.
- * Each location stores its own world, so arenas can exist in any world
- * independently. Use getWorld() to retrieve the arena's world from pos1.
- *
- * Use isFullyConfigured() before enabling an arena for play.
- * The state field drives match lifecycle phases.
- */
 public class Arena {
 
-    private final String id;           // unique, lowercase, immutable
+    private final String id;
     private ArenaState state = ArenaState.DISABLED;
     private boolean enabled = false;
 
-    // Team spawns — where players teleport at match start
     private Location redSpawn;
     private Location blueSpawn;
-
-    // Waiting area spawn — where players stand before/after the match
     private Location lobbySpawn;
 
-    // Goals — player stepping on opponent's goal scores a point
-    private Location redGoal;
-    private Location blueGoal;
+    // Goals are regions (two corner points) rather than single blocks.
+    // Region check uses inclusive block coordinates; generous Y range suits Bedrock players.
+    private Location redGoalPos1;
+    private Location redGoalPos2;
+    private Location blueGoalPos1;
+    private Location blueGoalPos2;
 
-    // Reset region corners — defines the FAWE paste/copy area
     private Location pos1;
     private Location pos2;
 
-    // Name of the .schem file (defaults to arena id)
     private String schematicName;
 
-    // Queue signs registered to this arena
     private final List<Location> signs = new ArrayList<>();
 
     public Arena(String id) {
@@ -72,11 +59,17 @@ public class Arena {
     public Location getLobbySpawn() { return lobbySpawn; }
     public void setLobbySpawn(Location lobbySpawn) { this.lobbySpawn = lobbySpawn; }
 
-    public Location getRedGoal() { return redGoal; }
-    public void setRedGoal(Location redGoal) { this.redGoal = redGoal; }
+    public Location getRedGoalPos1() { return redGoalPos1; }
+    public void setRedGoalPos1(Location p) { this.redGoalPos1 = p; }
 
-    public Location getBlueGoal() { return blueGoal; }
-    public void setBlueGoal(Location blueGoal) { this.blueGoal = blueGoal; }
+    public Location getRedGoalPos2() { return redGoalPos2; }
+    public void setRedGoalPos2(Location p) { this.redGoalPos2 = p; }
+
+    public Location getBlueGoalPos1() { return blueGoalPos1; }
+    public void setBlueGoalPos1(Location p) { this.blueGoalPos1 = p; }
+
+    public Location getBlueGoalPos2() { return blueGoalPos2; }
+    public void setBlueGoalPos2(Location p) { this.blueGoalPos2 = p; }
 
     public Location getPos1() { return pos1; }
     public void setPos1(Location pos1) { this.pos1 = pos1; }
@@ -86,7 +79,6 @@ public class Arena {
 
     // ── World convenience ─────────────────────────────────────────────────────
 
-    /** Returns the world this arena lives in, derived from pos1. Null if pos1 is not set. */
     public World getWorld() {
         return pos1 != null ? pos1.getWorld() : null;
     }
@@ -100,9 +92,7 @@ public class Arena {
 
     public List<Location> getSignLocations() { return Collections.unmodifiableList(signs); }
 
-    public void addSign(Location loc) {
-        signs.add(loc);
-    }
+    public void addSign(Location loc) { signs.add(loc); }
 
     public void removeSign(Location loc) {
         signs.removeIf(s -> s.getWorld() != null
@@ -117,16 +107,40 @@ public class Arena {
         signs.addAll(locs);
     }
 
+    // ── Goal region checks ────────────────────────────────────────────────────
+
+    public boolean hasRedGoal() { return redGoalPos1 != null && redGoalPos2 != null; }
+    public boolean hasBlueGoal() { return blueGoalPos1 != null && blueGoalPos2 != null; }
+
+    public boolean isInsideRedGoal(Location loc) {
+        return isInsideRegion(loc, redGoalPos1, redGoalPos2);
+    }
+
+    public boolean isInsideBlueGoal(Location loc) {
+        return isInsideRegion(loc, blueGoalPos1, blueGoalPos2);
+    }
+
+    public boolean isInsideArena(Location loc) {
+        return isInsideRegion(loc, pos1, pos2);
+    }
+
+    private boolean isInsideRegion(Location loc, Location p1, Location p2) {
+        if (loc == null || p1 == null || p2 == null) return false;
+        if (loc.getWorld() == null || !loc.getWorld().equals(p1.getWorld())) return false;
+        int x = loc.getBlockX(), y = loc.getBlockY(), z = loc.getBlockZ();
+        return x >= Math.min(p1.getBlockX(), p2.getBlockX()) && x <= Math.max(p1.getBlockX(), p2.getBlockX())
+            && y >= Math.min(p1.getBlockY(), p2.getBlockY()) && y <= Math.max(p1.getBlockY(), p2.getBlockY())
+            && z >= Math.min(p1.getBlockZ(), p2.getBlockZ()) && z <= Math.max(p1.getBlockZ(), p2.getBlockZ());
+    }
+
     // ── Validation ────────────────────────────────────────────────────────────
 
-    /** True when every required location has been set. */
     public boolean isFullyConfigured() {
         return redSpawn != null && blueSpawn != null && lobbySpawn != null
-                && redGoal != null && blueGoal != null
+                && hasRedGoal() && hasBlueGoal()
                 && pos1 != null && pos2 != null;
     }
 
-    /** True when both region corners are set (needed for save/reset). */
     public boolean hasRegion() {
         return pos1 != null && pos2 != null;
     }

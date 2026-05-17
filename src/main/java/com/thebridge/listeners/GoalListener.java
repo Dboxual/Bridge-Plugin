@@ -3,7 +3,6 @@ package com.thebridge.listeners;
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.match.BridgeMatch;
 import com.thebridge.match.MatchState;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -25,9 +24,6 @@ public class GoalListener implements Listener {
         Player player = event.getPlayer();
         BridgeMatch match = plugin.getMatchManager().getMatch(player);
         if (match == null || match.getState() != MatchState.ACTIVE) return;
-
-        Location to = event.getTo();
-        if (to == null) return;
 
         match.onGoalEntered(player);
     }

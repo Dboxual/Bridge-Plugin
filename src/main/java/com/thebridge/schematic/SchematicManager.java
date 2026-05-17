@@ -85,6 +85,10 @@ public class SchematicManager {
 
         Location loc1 = arena.getPos1();
         Location loc2 = arena.getPos2();
+        File file = getSchematicFile(arena);
+
+        plugin.getLogger().info("[Bridge] Saving '" + arena.getId() + "' → world=" + world.getName()
+                + ", file=" + file.getAbsolutePath());
 
         return CompletableFuture.runAsync(() -> {
             com.sk89q.worldedit.world.World weWorld = BukkitAdapter.adapt(world);
@@ -114,13 +118,13 @@ public class SchematicManager {
                 Operations.complete(copy);
             }
 
-            File file = getSchematicFile(arena);
             try (ClipboardWriter writer = BuiltInClipboardFormat.FAST.getWriter(
                     new FileOutputStream(file))) {
                 writer.write(clipboard);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to write schematic: " + e.getMessage(), e);
             }
+            plugin.getLogger().info("[Bridge] Save complete: " + arena.getId());
         });
     }
 
@@ -147,8 +151,10 @@ public class SchematicManager {
                     new IllegalStateException("Arena '" + arena.getId() + "' world is not loaded."));
         }
 
+        plugin.getLogger().info("[Bridge] Resetting '" + arena.getId() + "' → world=" + world.getName()
+                + ", file=" + file.getAbsolutePath());
+
         return CompletableFuture.runAsync(() -> {
-            // Auto-detect format so the file can be read regardless of how it was written
             ClipboardFormat format = ClipboardFormats.findByFile(file);
             if (format == null) format = BuiltInClipboardFormat.SPONGE_V2_SCHEMATIC;
 
@@ -159,6 +165,7 @@ public class SchematicManager {
                 throw new RuntimeException("Failed to read schematic: " + e.getMessage(), e);
             }
 
+            plugin.getLogger().info("[Bridge] Paste origin: " + clipboard.getOrigin());
             com.sk89q.worldedit.world.World weWorld = BukkitAdapter.adapt(world);
 
             try (EditSession session = WorldEdit.getInstance()
@@ -176,6 +183,7 @@ public class SchematicManager {
                         .build();
                 Operations.complete(paste);
             }
+            plugin.getLogger().info("[Bridge] Reset complete: " + arena.getId());
         });
     }
 }

@@ -11,6 +11,8 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class BridgeMatch {
@@ -27,6 +29,9 @@ public class BridgeMatch {
     private MatchState state = MatchState.COUNTDOWN;
     private BukkitRunnable countdownTask;
 
+    private final Map<UUID, Long> lastGoalTime = new HashMap<>();
+    private static final long GOAL_COOLDOWN_MS = 2000;
+
     public BridgeMatch(TheBridgePlugin plugin, Arena arena, UUID redPlayer, UUID bluePlayer) {
         this.plugin = plugin;
         this.arena = arena;
@@ -41,17 +46,13 @@ public class BridgeMatch {
         arena.setState(ArenaState.IN_GAME);
         plugin.getQueueManager().updateSigns(arena);
 
+        teleportSafe(redPlayer, arena.getRedSpawn());
+        teleportSafe(bluePlayer, arena.getBlueSpawn());
+
         Player red = Bukkit.getPlayer(redPlayer);
         Player blue = Bukkit.getPlayer(bluePlayer);
-
-        if (red != null) {
-            red.getInventory().clear();
-            red.teleport(arena.getRedSpawn());
-        }
-        if (blue != null) {
-            blue.getInventory().clear();
-            blue.teleport(arena.getBlueSpawn());
-        }
+        if (red != null) red.getInventory().clear();
+        if (blue != null) blue.getInventory().clear();
 
         broadcast(Component.text("Match starting! §cRed§r vs §9Blue§r in arena §e" + arena.getId() + "§r."));
         startCountdown(() -> state = MatchState.ACTIVE);
@@ -61,21 +62,22 @@ public class BridgeMatch {
         if (state != MatchState.ACTIVE) return;
 
         UUID uid = player.getUniqueId();
-        boolean scoredGoal;
+        long now = System.currentTimeMillis();
+        Long lastTime = lastGoalTime.get(uid);
+        if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) return;
+        lastGoalTime.put(uid, now);
 
-        if (uid.equals(redPlayer) && isSameBlock(player.getLocation(), arena.getBlueGoal())) {
+        Location loc = player.getLocation();
+
+        if (uid.equals(redPlayer) && arena.isInsideBlueGoal(loc)) {
             redScore++;
-            scoredGoal = true;
             broadcast(Component.text("§cRed §rscored! §c" + redScore + " §r- §9" + blueScore));
-        } else if (uid.equals(bluePlayer) && isSameBlock(player.getLocation(), arena.getRedGoal())) {
+        } else if (uid.equals(bluePlayer) && arena.isInsideRedGoal(loc)) {
             blueScore++;
-            scoredGoal = true;
             broadcast(Component.text("§9Blue §rscored! §c" + redScore + " §r- §9" + blueScore));
         } else {
             return;
         }
-
-        if (!scoredGoal) return;
 
         if (redScore >= pointsToWin) {
             endMatch(redPlayer);
@@ -87,42 +89,47 @@ public class BridgeMatch {
     }
 
     public void onPlayerDisconnect(UUID uid) {
+        if (state == MatchState.ENDED) return;
         UUID winner = uid.equals(redPlayer) ? bluePlayer : redPlayer;
-        broadcast(Component.text("A player disconnected — opponent wins by forfeit."));
+        broadcast(Component.text("A player left — opponent wins by forfeit."));
         endMatch(winner);
     }
 
     private void resetAndContinue() {
         state = MatchState.RESETTING;
+        cancelCountdown();
         broadcast(Component.text("Resetting arena..."));
+
         plugin.getSchematicManager().resetArena(arena).whenComplete((v, ex) ->
                 Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (state == MatchState.ENDED) return;
                     if (ex != null) {
-                        plugin.getLogger().severe("Schematic reset failed: " + ex.getMessage());
+                        plugin.getLogger().severe("[Bridge] Schematic reset failed mid-match for '" + arena.getId() + "': " + ex.getMessage());
                     }
-                    Player red = Bukkit.getPlayer(redPlayer);
-                    Player blue = Bukkit.getPlayer(bluePlayer);
-                    if (red != null) red.teleport(arena.getRedSpawn());
-                    if (blue != null) blue.teleport(arena.getBlueSpawn());
+                    teleportSafe(redPlayer, arena.getRedSpawn());
+                    teleportSafe(bluePlayer, arena.getBlueSpawn());
                     startCountdown(() -> state = MatchState.ACTIVE);
                 })
         );
     }
 
     public void endMatch(UUID winnerUid) {
+        if (state == MatchState.ENDED) return;
         state = MatchState.ENDED;
         cancelCountdown();
 
         Player winner = Bukkit.getPlayer(winnerUid);
         String winnerName = winner != null ? winner.getName()
                 : (winnerUid.equals(redPlayer) ? "Red" : "Blue");
-        broadcast(Component.text("§e" + winnerName + " §rwins! Final score: §c" + redScore + " §r- §9" + blueScore));
+        broadcast(Component.text("§e" + winnerName + " §rwins! Final: §c" + redScore + " §r- §9" + blueScore));
 
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
             if (p != null) {
                 p.getInventory().clear();
-                if (arena.getLobbySpawn() != null) p.teleport(arena.getLobbySpawn());
+                if (arena.getLobbySpawn() != null) {
+                    teleportSafe(uid, arena.getLobbySpawn());
+                }
             }
         }
 
@@ -141,9 +148,9 @@ public class BridgeMatch {
         countdownTask = new BukkitRunnable() {
             @Override
             public void run() {
+                if (state == MatchState.ENDED) { cancel(); return; }
                 if (tick[0] > 0) {
-                    Component msg = Component.text(tick[0], NamedTextColor.YELLOW, TextDecoration.BOLD);
-                    sendActionBar(msg);
+                    sendActionBar(Component.text(tick[0], NamedTextColor.YELLOW, TextDecoration.BOLD));
                     tick[0]--;
                 } else {
                     sendActionBar(Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD));
@@ -163,7 +170,18 @@ public class BridgeMatch {
         }
     }
 
-    // ── Utilities ─────────────────────────────────────────────────────────────
+    // ── Safe teleport ─────────────────────────────────────────────────────────
+
+    // Marks the teleport as plugin-initiated so MatchListener does not treat it as a forfeit.
+    private void teleportSafe(UUID uid, Location loc) {
+        if (loc == null) return;
+        plugin.getMatchManager().markPluginTeleport(uid);
+        Player p = Bukkit.getPlayer(uid);
+        if (p != null) p.teleport(loc);
+        Bukkit.getScheduler().runTask(plugin, () -> plugin.getMatchManager().clearPluginTeleport(uid));
+    }
+
+    // ── Broadcast helpers ─────────────────────────────────────────────────────
 
     private void broadcast(Component msg) {
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
@@ -179,18 +197,12 @@ public class BridgeMatch {
         }
     }
 
-    private boolean isSameBlock(Location a, Location b) {
-        if (a == null || b == null) return false;
-        if (a.getWorld() == null || !a.getWorld().equals(b.getWorld())) return false;
-        return a.getBlockX() == b.getBlockX()
-                && a.getBlockY() == b.getBlockY()
-                && a.getBlockZ() == b.getBlockZ();
-    }
-
     // ── Getters ───────────────────────────────────────────────────────────────
 
     public Arena getArena() { return arena; }
     public UUID getRedPlayer() { return redPlayer; }
     public UUID getBluePlayer() { return bluePlayer; }
+    public int getRedScore() { return redScore; }
+    public int getBlueScore() { return blueScore; }
     public MatchState getState() { return state; }
 }

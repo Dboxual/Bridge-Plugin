@@ -21,7 +21,7 @@ The plugin **will not load** unless FAWE is installed on the server.
 - Arenas work in **any world** — the world is derived automatically from the location you're standing in when you run each `set*` command.
 - Players right-click a registered **queue sign** to join or leave the queue for an arena.
 - When 2 players are queued, the match starts automatically after a countdown.
-- Players score by stepping on the **opponent's goal block**.
+- Players score by entering the **opponent's goal region** (a configurable cuboid area, not a single block — Bedrock-friendly).
 - After each point the arena resets via FAWE and a new countdown begins.
 - First to **5 points** wins. Both players are sent to `lobbySpawn` when the match ends.
 - A player disconnecting mid-match forfeits to their opponent.
@@ -40,8 +40,11 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge setredspawn <arena>` | Set red team spawn at your location |
 | `/bridge setbluespawn <arena>` | Set blue team spawn at your location |
 | `/bridge setlobby <arena>` | Set lobby/waiting spawn at your location |
-| `/bridge setredgoal <arena>` | Set red team goal at your location |
-| `/bridge setbluegoal <arena>` | Set blue team goal at your location |
+| `/bridge wand` | Get the Bridge Setup Wand (left=pos1, right=pos2) |
+| `/bridge setredgoal <arena>` | Set red goal region from wand selection |
+| `/bridge setbluegoal <arena>` | Set blue goal region from wand selection |
+| `/bridge showgoals <arena>` | Visualise goal regions with particles for 10 s |
+| `/bridge debug <arena>` | Dump full arena and match status |
 | `/bridge setpos1 <arena>` | Set reset region corner 1 at your location |
 | `/bridge setpos2 <arena>` | Set reset region corner 2 at your location |
 | `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
@@ -52,12 +55,17 @@ The plugin **will not load** unless FAWE is installed on the server.
 
 ## Arena setup flow
 
-1. `create` a new arena.
-2. Stand at each location and run the corresponding `set*` command. The world is saved automatically from wherever you are standing — no world configuration needed.
-3. Set `pos1` and `pos2` around the full arena area to be reset between points.
-4. Run `/bridge save` — copies the region into `plugins/TheBridge/schematics/<name>.schem`.
-5. Place a sign, look at it, and run `/bridge setsign <arena>` to register it as a queue sign.
-6. Players can now right-click the sign to join the queue. When 2 players queue, the match begins.
+1. `/bridge create <arena>` — create the arena entry.
+2. Stand at each spawn and run the corresponding `set*` command. The world is detected automatically.
+3. **Goal regions:** run `/bridge wand` to receive the wand.
+   - Left-click one corner of the goal area → pos1 selected.
+   - Right-click the opposite corner → pos2 selected.
+   - Run `/bridge setredgoal <arena>` (or `setbluegoal`). Repeat for the other team.
+   - Use `/bridge showgoals <arena>` to verify the regions with particles.
+4. `/bridge setpos1 <arena>` and `/bridge setpos2 <arena>` — mark the full arena region to reset between rounds.
+5. `/bridge save <arena>` — snapshot the region as a schematic.
+6. Place a sign, look at it, `/bridge setsign <arena>` — sign updates automatically.
+7. Players right-click the sign to join. Two players → match starts.
 
 ---
 

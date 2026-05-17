@@ -12,16 +12,18 @@ TheBridge is a Paper 1.21.x minigame plugin for The Bridge (players score by ste
 TheBridgePlugin               — entry point; wires all managers + registers listeners
   ArenaManager                — in-memory arena registry, CRUD
     ArenaStorage              — YAML persistence (arenas.yml), includes sign locations
-    Arena                     — model: spawns, goals, region, signs, state
+    Arena                     — model: spawns, goal regions, reset region, signs, state
     ArenaState                — enum: DISABLED, WAITING, STARTING, IN_GAME, RESETTING
-  SchematicManager            — FAWE async save/restore
-  MatchManager                — tracks active BridgeMatch instances
-    BridgeMatch               — single match: countdown, scoring, reset, forfeit
+  SchematicManager            — FAWE async save/restore with console debug logging
+  MatchManager                — tracks active BridgeMatch instances; plugin-teleport flag set
+    BridgeMatch               — single match: countdown, scoring, reset, forfeit; score cooldown
   QueueManager                — per-arena player queues; starts match when 2 queued
+  WandManager                 — per-player pos1/pos2 selections for goal region setup
   BridgeCommand               — /bridge admin subcommands + tab completion
   SignListener                — right-click queue sign → join/leave queue
-  GoalListener                — PlayerMoveEvent → goal detection (block-change only)
-  MatchListener               — PlayerQuitEvent → queue leave or match forfeit
+  GoalListener                — PlayerMoveEvent → goal region detection (block-change only)
+  MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
+  WandListener                — left/right-click with wand → pos1/pos2 selection
 ```
 
 ---
@@ -35,7 +37,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
 | `id` | Unique lowercase identifier; immutable after creation |
 | `redSpawn`, `blueSpawn` | Team spawn points used at match start |
 | `lobbySpawn` | Where players are sent after the match ends |
-| `redGoal`, `blueGoal` | Locations that trigger scoring when stepped on |
+| `redGoalPos1/2`, `blueGoalPos1/2` | Two-corner regions; scoring fires when a player's block position is inside the opponent's region |
 | `pos1`, `pos2` | FAWE region corners for save/reset |
 | `schematicName` | Filename (without extension); defaults to `id` |
 | `enabled` | Whether the arena is open for play |
@@ -106,7 +108,7 @@ Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 # Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.1.0.jar
+# Output: build/TheBridge-1.1.1.jar
 ```
 
 Classpath separator is `;` (Windows javac). `build.gradle.kts` exists for IDE dependency resolution only.
