@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/classes/
+build/sources.txt
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled output — keep only the final jar, not intermediate class files
+# (build/TheBridge-*.jar is tracked intentionally)
+
+# Lib jars — too large for git; see libs/LIBS_README.txt for setup instructions
+libs/*.jar
