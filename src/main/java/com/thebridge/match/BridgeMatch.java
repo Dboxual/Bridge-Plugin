@@ -56,6 +56,10 @@ public class BridgeMatch {
     // Players in this set cannot change their XYZ position (rotation still allowed).
     private final Set<UUID> frozenPlayers = new HashSet<>();
 
+    // Survival inventories saved at match start; restored verbatim when the match ends.
+    // Keyed by player UUID so offline-player data is not lost between ticks.
+    private final Map<UUID, SavedInventory> savedInventories = new HashMap<>();
+
     private BukkitRunnable voidCheckTask = null;
 
     // Snapshots of the configured release zone blocks, captured at match start.
@@ -71,6 +75,18 @@ public class BridgeMatch {
 
     // Immutable snapshot of one block's position and material.
     private record BlockSnapshot(World world, int x, int y, int z, BlockData data) {}
+
+    // Complete snapshot of a player's survival state saved before match start.
+    private record SavedInventory(
+            ItemStack[] contents,    // slots 0-35 (hotbar + storage)
+            ItemStack[] armor,       // [boots, leggings, chestplate, helmet]
+            ItemStack   offhand,
+            int         xpLevel,
+            float       xpProgress,
+            double      health,
+            int         foodLevel,
+            float       saturation
+    ) {}
 
     public BridgeMatch(TheBridgePlugin plugin, Arena arena, UUID redPlayer, UUID bluePlayer) {
         this.plugin = plugin;
@@ -95,9 +111,18 @@ public class BridgeMatch {
                 + "  blue: "
                 + (blueP != null ? blueP.getName() : bluePlayer) + " → " + fmtLoc(arena.getBlueSpawn()));
 
+        // Save survival inventories BEFORE touching anything so we can restore them on match end.
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
-            if (p != null) p.getInventory().clear();
+            if (p != null) saveInventory(p);
+        }
+
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) {
+                p.getInventory().clear();
+                debugAdmin("Inventory CLEARED (match start): player=" + p.getName());
+            }
         }
 
         teleportSafe(redPlayer, arena.getRedSpawn());
@@ -300,10 +325,13 @@ public class BridgeMatch {
 
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
-            if (p == null) continue;
-            p.getInventory().clear();
-            p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
-            if (arena.getLobbySpawn() != null) teleportSafe(uid, arena.getLobbySpawn());
+            if (p != null) {
+                p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+                if (arena.getLobbySpawn() != null) teleportSafe(uid, arena.getLobbySpawn());
+            }
+            // Restore survival inventory (clears game kit first, then re-applies saved state).
+            // Safe to call when player is offline — handled internally.
+            restoreInventory(uid);
         }
 
         scoreboard = null;
@@ -434,6 +462,7 @@ public class BridgeMatch {
         Player p = Bukkit.getPlayer(uid);
         if (p == null) return;
         p.getInventory().clear();
+        debugAdmin("Inventory CLEARED (loadout): player=" + p.getName() + " team=" + team);
 
         Material blockMat   = team == Team.RED ? Material.RED_TERRACOTTA   : Material.BLUE_TERRACOTTA;
         Color    armorColor = team == Team.RED ? Color.fromRGB(180, 20, 20) : Color.fromRGB(20, 20, 200);
@@ -452,6 +481,7 @@ public class BridgeMatch {
         p.setHealth(20.0);
         p.setFoodLevel(20);
         p.setSaturation(20f);
+        debugAdmin("Loadout APPLIED: player=" + p.getName() + " team=" + team + " arena=" + arena.getId());
     }
 
     private ItemStack dyeArmor(ItemStack item, Color color) {
@@ -700,6 +730,72 @@ public class BridgeMatch {
         plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
                 + " in arena '" + arena.getId() + "'.");
         giveLoadout(uid, team);
+    }
+
+    // ── Survival inventory save / restore ─────────────────────────────────────
+
+    private void saveInventory(Player p) {
+        ItemStack[] contents = cloneItems(p.getInventory().getContents());
+        ItemStack[] armor    = cloneItems(p.getInventory().getArmorContents());
+        ItemStack   offhand  = p.getInventory().getItemInOffHand().clone();
+
+        savedInventories.put(p.getUniqueId(), new SavedInventory(
+                contents, armor, offhand,
+                p.getLevel(), p.getExp(),
+                p.getHealth(), p.getFoodLevel(), p.getSaturation()
+        ));
+        debugAdmin("Inventory SAVED: player=" + p.getName()
+                + " slots=" + countNonEmpty(contents)
+                + " armor=" + countNonEmpty(armor)
+                + " xpLvl=" + p.getLevel());
+    }
+
+    private void restoreInventory(UUID uid) {
+        Player p = Bukkit.getPlayer(uid);
+        SavedInventory snap = savedInventories.remove(uid);
+
+        if (p == null) {
+            // Player is offline — cannot restore now.  Saved data is intentionally
+            // discarded; they will reconnect with whatever the server persists for them.
+            debugAdmin("Inventory RESTORE SKIPPED (offline): uuid=" + uid);
+            return;
+        }
+
+        // Always clear the game kit, even if there is no saved snapshot.
+        p.getInventory().clear();
+        debugAdmin("Inventory CLEARED (game kit removed): player=" + p.getName());
+
+        if (snap == null) {
+            debugAdmin("Inventory RESTORE SKIPPED (no snapshot): player=" + p.getName());
+            return;
+        }
+
+        p.getInventory().setContents(snap.contents());
+        p.getInventory().setArmorContents(snap.armor());
+        p.getInventory().setItemInOffHand(snap.offhand() != null ? snap.offhand() : new ItemStack(Material.AIR));
+        p.setLevel(snap.xpLevel());
+        p.setExp(snap.xpProgress());
+        p.setHealth(Math.min(snap.health(), p.getMaxHealth()));
+        p.setFoodLevel(snap.foodLevel());
+        p.setSaturation(snap.saturation());
+        debugAdmin("Inventory RESTORED: player=" + p.getName()
+                + " slots=" + countNonEmpty(snap.contents())
+                + " armor=" + countNonEmpty(snap.armor())
+                + " xpLvl=" + snap.xpLevel());
+    }
+
+    private static ItemStack[] cloneItems(ItemStack[] src) {
+        ItemStack[] copy = new ItemStack[src.length];
+        for (int i = 0; i < src.length; i++) {
+            copy[i] = (src[i] != null && src[i].getType() != Material.AIR) ? src[i].clone() : null;
+        }
+        return copy;
+    }
+
+    private static int countNonEmpty(ItemStack[] items) {
+        int n = 0;
+        for (ItemStack it : items) if (it != null && it.getType() != Material.AIR) n++;
+        return n;
     }
 
     // ── Admin debug helper ────────────────────────────────────────────────────

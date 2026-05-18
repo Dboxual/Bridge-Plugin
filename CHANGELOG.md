@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.2.8 — 2026-05-18
+### Fixed — survival inventory preserved across match sessions
+
+**Root cause:** `BridgeMatch.start()` called `p.getInventory().clear()` without first saving the player's survival inventory, and `endMatch()` called `p.getInventory().clear()` again without ever restoring it. Any items the player had before joining a match were permanently discarded when they left.
+
+**Fix — `SavedInventory` snapshot in `BridgeMatch`:**
+- New private `SavedInventory` record captures slots 0-35, armor (4 slots), offhand, XP level + progress, health, food, and saturation.
+- `saveInventory(Player)` — called in `start()` **before** any clearing. Deep-copies every `ItemStack` so in-game mutations cannot corrupt the snapshot.
+- `restoreInventory(UUID)` — called in `endMatch()` in place of the old blind `clear()`. Clears the game kit first, then restores all saved fields. Clamps health to `getMaxHealth()` to guard against attribute changes mid-match.
+- If the player is offline when the match ends, a debug message is logged and the saved data is discarded (the server's own persistence handles their inventory state).
+- If no snapshot exists for a player (e.g. they joined after match start), the game kit is still cleared but no restore is attempted.
+
+**Debug logging added** (always to console; in-game admin messages gated behind `settings.debug: true`):
+- `Inventory SAVED` — player name, filled slot counts, XP level
+- `Inventory CLEARED (match start)` — before first teleport
+- `Inventory CLEARED (loadout)` — each time `giveLoadout()` runs (includes soft-resets)
+- `Loadout APPLIED` — after kit is given, shows player + team + arena
+- `Inventory CLEARED (game kit removed)` — in `restoreInventory()` before restoring
+- `Inventory RESTORED` — slot counts and XP level after restore
+- `Inventory RESTORE SKIPPED` — when player is offline or snapshot is absent
+
+---
+
 ## v1.2.7 — 2026-05-18
 ### Added — `/bridge removesign`
 
