@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.7 — 2026-05-18
+### Added — `/bridge removesign`
+
+- **New command:** `/bridge removesign <arena>` unregisters the sign the admin is looking at from the arena's sign list.
+- The physical sign block is preserved; only its text is cleared (all four lines on both faces set to blank).
+- Errors clearly if: the targeted block is not a sign, or the sign is not registered to the specified arena.
+- Arena data is saved immediately after removal.
+- Tab completion and `/bridge` usage list updated.
+
 ## v1.2.6 — 2026-05-18
 ### Added — `/bridge setarena` wand-based reset region setup
 

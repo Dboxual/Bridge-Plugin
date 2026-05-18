@@ -64,6 +64,7 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge setpos1 <arena>` | Set reset region corner 1 at your location (legacy) |
 | `/bridge setpos2 <arena>` | Set reset region corner 2 at your location (legacy) |
 | `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
+| `/bridge removesign <arena>` | Unregister the sign you are looking at (clears text, keeps block) |
 | `/bridge save <arena>` | Save the arena region as a schematic |
 | `/bridge reset <arena>` | Restore the arena from its saved schematic |
 

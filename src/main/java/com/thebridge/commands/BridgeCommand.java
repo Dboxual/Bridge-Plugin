@@ -12,6 +12,7 @@ import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.block.sign.Side;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -66,6 +67,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "wand"         -> handleWand(sender);
             case "selection"    -> handleSelection(sender);
             case "setsign"      -> handleSetSign(sender, args);
+            case "removesign"   -> handleRemoveSign(sender, args);
             case "showgoals"    -> handleShowGoals(sender, args);
             case "save"         -> handleSave(sender, args);
             case "reset"        -> handleReset(sender, args);
@@ -320,6 +322,46 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(PREFIX + "§aSign registered for arena §e" + arena.getId() + "§a.");
     }
 
+    private void handleRemoveSign(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        if (args.length < 2) { usage(sender, "removesign <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+
+        Block target = player.getTargetBlockExact(5);
+        if (target == null || !(target.getState() instanceof Sign)) {
+            sender.sendMessage(PREFIX + "§cLook at a sign block to remove it."); return;
+        }
+
+        Location loc = target.getLocation();
+        boolean registered = arena.getSignLocations().stream().anyMatch(s ->
+                s.getWorld() != null && s.getWorld().equals(loc.getWorld())
+                && s.getBlockX() == loc.getBlockX()
+                && s.getBlockY() == loc.getBlockY()
+                && s.getBlockZ() == loc.getBlockZ());
+
+        if (!registered) {
+            sender.sendMessage(PREFIX + "§cThis sign is not registered to arena §e" + arena.getId() + "§c."); return;
+        }
+
+        arena.removeSign(loc);
+        plugin.getArenaManager().saveArena(arena);
+
+        Sign sign = (Sign) target.getState();
+        for (Side side : Side.values()) {
+            var face = sign.getSide(side);
+            face.line(0, Component.empty());
+            face.line(1, Component.empty());
+            face.line(2, Component.empty());
+            face.line(3, Component.empty());
+        }
+        sign.update();
+
+        sender.sendMessage(PREFIX + "§aSign removed from arena §e" + arena.getId() + "§a.");
+    }
+
     private void handleShowGoals(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
@@ -522,7 +564,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setredrelease", "setbluerelease",
                     "setarena", "setvoidlevel",
                     "setpos1", "setpos2",
-                    "wand", "selection", "setsign", "showgoals",
+                    "wand", "selection", "setsign", "removesign", "showgoals",
                     "save", "reset", "debug"), args[0]);
         }
         // wand and selection take no second argument
@@ -572,6 +614,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setpos1 §f<arena>              §7Set reset region corner 1 §7(legacy)");
         sender.sendMessage("  §b/bridge setpos2 §f<arena>              §7Set reset region corner 2 §7(legacy)");
         sender.sendMessage("  §b/bridge setsign §f<arena>        §7Register the sign you're looking at");
+        sender.sendMessage("  §b/bridge removesign §f<arena>     §7Unregister the sign you're looking at");
         sender.sendMessage("  §b/bridge save §f<arena>           §7Save arena region as schematic");
         sender.sendMessage("  §b/bridge reset §f<arena>          §7Restore arena from schematic");
         sender.sendMessage("  §b/bridge debug §f<arena>          §7Dump full arena/match status");

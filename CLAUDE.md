@@ -19,7 +19,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
     BridgeMatch               — single match: countdown, scoring, soft reset, full end-reset, forfeit
   QueueManager                — per-arena player queues; starts match when 2 queued
   WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
-  BridgeCommand               — /bridge admin subcommands + tab completion; setarena uses wand selection to set reset region
+  BridgeCommand               — /bridge admin subcommands + tab completion; setarena uses wand selection to set reset region; removesign unregisters a sign by look-target
   SignListener                — right-click queue sign → join/leave queue
   GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
