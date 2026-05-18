@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.2.3 — 2026-05-18
+### Fixed — bug-fix patch for the 1v1 match loop
+
+#### A) Release zone debug logging
+- Console now logs every capture (`[Bridge] Captured N red/blue release blocks`), every restore, and every clear so the sequence is visible in the server log.
+- Fixed stale warning messages that still referenced the removed `/bridge setredrelease1/2` commands — they now reference the correct `/bridge setredrelease <arena>`.
+
+#### B) Spawn assignment debug + defensive re-teleport
+- `BridgeMatch.start()` now logs: `[Bridge] Match start — red: <name> → world(x,y,z)  blue: <name> → world(x,y,z)` so spawn-assignment issues are immediately visible.
+- Added a 1-tick deferred re-teleport immediately after match start so players reach their correct spawn even if the initial teleport was dropped by the engine on the same tick.
+
+#### C) Void/death level — `/bridge setvoidlevel <arena>`
+- New command stores the admin's current Y as the arena's void Y. Shown in `/bridge debug`. Persisted in `arenas.yml` under `void-level`.
+- A repeating 5-tick task checks both players during `ACTIVE` state. If a player's Y ≤ void Y they are teleported to their team spawn, effects cleared, loadout restored — match stays ACTIVE with no countdown.
+
+#### D) Death respawn
+- `MatchListener` now handles `PlayerDeathEvent` (suppress drops, keep inventory/XP) and `PlayerRespawnEvent` (set respawn location to team spawn). One tick after respawn the loadout is re-given via `BridgeMatch.respawnPlayer()`.
+
+#### E) Scoring debug logging
+- `onGoalEntered` now logs on goal-cooldown rejections (with elapsed ms) and on goal-region misses (`isRed`, `isBlue`, `inRedGoal`, `inBlueGoal` flags) so scoring failures are traceable in the server console.
+
+#### F) `/bridge debug` update
+- Now shows `Void level: Y=<n>` (or `not set`) between the release zone lines and the schematic line.
+
 ## v1.2.2 — 2026-05-18
 ### Changed — release zone UX aligned with wand system
 - **`/bridge setredrelease <arena>`** and **`/bridge setbluerelease <arena>`** replace the four individual corner commands. Both read the current Bridge wand selection (pos1 + pos2) and save the cuboid region as the team's release zone — identical UX to `/bridge setredgoal` and `/bridge setbluegoal`.

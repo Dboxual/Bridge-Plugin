@@ -103,6 +103,7 @@ public class ArenaStorage {
         arena.setBlueRelease2(readLocation(s, "blue-release-2"));
         arena.setPos1(readLocation(s, "pos1"));
         arena.setPos2(readLocation(s, "pos2"));
+        if (s.contains("void-level")) arena.setVoidLevel(s.getInt("void-level"));
         arena.setSignLocations(readSigns(s));
         return arena;
     }
@@ -126,6 +127,7 @@ public class ArenaStorage {
         writeLocation(base + ".blue-release-2", arena.getBlueRelease2());
         writeLocation(base + ".pos1",           arena.getPos1());
         writeLocation(base + ".pos2",           arena.getPos2());
+        config.set(base + ".void-level", arena.hasVoidLevel() ? arena.getVoidLevel() : null);
         writeSigns(base + ".signs", arena.getSignLocations());
         flush();
     }

@@ -59,6 +59,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setbluegoal"     -> handleSetGoalRegion(sender, args, false);
             case "setredrelease"   -> handleSetReleaseRegion(sender, args, true);
             case "setbluerelease"  -> handleSetReleaseRegion(sender, args, false);
+            case "setvoidlevel"    -> handleSetVoidLevel(sender, args);
             case "setpos1"         -> handleSetLoc(sender, args, Field.POS1);
             case "setpos2"      -> handleSetLoc(sender, args, Field.POS2);
             case "wand"         -> handleWand(sender);
@@ -173,6 +174,19 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     + "§r: §7(" + fmtBlock(p1) + ")§r → §7(" + fmtBlock(p2) + ")§r.");
         }
         plugin.getArenaManager().saveArena(arena);
+    }
+
+    private void handleSetVoidLevel(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        if (args.length < 2) { usage(sender, "setvoidlevel <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+        int y = (int) player.getLocation().getY();
+        arena.setVoidLevel(y);
+        plugin.getArenaManager().saveArena(arena);
+        sender.sendMessage(PREFIX + "§aVoid level set to §eY=" + y + "§a for arena §e" + arena.getId() + "§a.");
     }
 
     private void handleSetReleaseRegion(CommandSender sender, String[] args, boolean red) {
@@ -390,6 +404,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                 + (arena.hasRedRelease()  ? "" : " §e(fallback 3×3)"));
         sender.sendMessage("§7Blue release: §f" + fmtLocFull(arena.getBlueRelease1()) + " §7→ §f" + fmtLocFull(arena.getBlueRelease2())
                 + (arena.hasBlueRelease() ? "" : " §e(fallback 3×3)"));
+        sender.sendMessage("§7Void level: §f" + (arena.hasVoidLevel() ? "Y=" + arena.getVoidLevel() : "not set"));
         sender.sendMessage("§7Schematic: §f" + arena.getSchematicName() + ".schem"
                 + "  Exists: §f" + plugin.getSchematicManager().hasSchematic(arena));
         sender.sendMessage("§7Path: §f" + plugin.getSchematicManager().getSchematicFile(arena).getAbsolutePath());
@@ -469,6 +484,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setredrelease", "setbluerelease",
+                    "setvoidlevel",
                     "setpos1", "setpos2",
                     "wand", "selection", "setsign", "showgoals",
                     "save", "reset", "debug"), args[0]);
@@ -515,6 +531,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge showgoals §f<arena>         §7Show goal regions with particles (10s)");
         sender.sendMessage("  §b/bridge setredrelease §f<arena>        §7Set red release zone from wand selection");
         sender.sendMessage("  §b/bridge setbluerelease §f<arena>       §7Set blue release zone from wand selection");
+        sender.sendMessage("  §b/bridge setvoidlevel §f<arena>         §7Set void Y level at your current position");
         sender.sendMessage("  §b/bridge setpos1 §f<arena>           §7Set reset region corner 1");
         sender.sendMessage("  §b/bridge setpos2 §f<arena>        §7Set reset region corner 2");
         sender.sendMessage("  §b/bridge setsign §f<arena>        §7Register the sign you're looking at");

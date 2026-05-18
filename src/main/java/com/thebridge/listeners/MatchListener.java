@@ -7,8 +7,10 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.UUID;
@@ -64,6 +66,28 @@ public class MatchListener implements Listener {
                 if (current == match) match.onPlayerDisconnect(uid);
             });
         }
+    }
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (plugin.getMatchManager().getMatch(player) == null) return;
+        event.setKeepInventory(true);
+        event.setKeepLevel(true);
+        event.getDrops().clear();
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        BridgeMatch match = plugin.getMatchManager().getMatch(player);
+        if (match == null) return;
+        Location spawn = match.getTeamSpawn(player.getUniqueId());
+        if (spawn != null) event.setRespawnLocation(spawn);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            BridgeMatch current = plugin.getMatchManager().getMatch(player);
+            if (current != null) current.respawnPlayer(player.getUniqueId());
+        }, 1L);
     }
 
     private void handle(Player player) {

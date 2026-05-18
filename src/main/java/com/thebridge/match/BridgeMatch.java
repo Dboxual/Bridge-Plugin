@@ -55,6 +55,8 @@ public class BridgeMatch {
     // Players in this set cannot change their XYZ position (rotation still allowed).
     private final Set<UUID> frozenPlayers = new HashSet<>();
 
+    private BukkitRunnable voidCheckTask = null;
+
     // Snapshots of the configured release zone blocks, captured at match start.
     // Restored before each round (so players land on solid ground) then cleared
     // (set to AIR) after the countdown so players fall naturally into the arena.
@@ -85,6 +87,13 @@ public class BridgeMatch {
 
         captureReleaseZones();
 
+        Player redP  = Bukkit.getPlayer(redPlayer);
+        Player blueP = Bukkit.getPlayer(bluePlayer);
+        plugin.getLogger().info("[Bridge] Match start — red: "
+                + (redP  != null ? redP.getName()  : redPlayer)  + " → " + fmtLoc(arena.getRedSpawn())
+                + "  blue: "
+                + (blueP != null ? blueP.getName() : bluePlayer) + " → " + fmtLoc(arena.getBlueSpawn()));
+
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
             if (p != null) p.getInventory().clear();
@@ -93,6 +102,13 @@ public class BridgeMatch {
         teleportSafe(redPlayer, arena.getRedSpawn());
         teleportSafe(bluePlayer, arena.getBlueSpawn());
 
+        // Defensive re-teleport 1 tick later in case the initial teleport was dropped.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (state == MatchState.ENDED) return;
+            teleportSafe(redPlayer, arena.getRedSpawn());
+            teleportSafe(bluePlayer, arena.getBlueSpawn());
+        }, 1L);
+
         giveLoadout(redPlayer, Team.RED);
         giveLoadout(bluePlayer, Team.BLUE);
 
@@ -100,6 +116,7 @@ public class BridgeMatch {
         freezePlayer(bluePlayer);
 
         setupScoreboard();
+        startVoidCheck();
 
         broadcast(Component.text("§aMatch starting! §cRed §rvs §9Blue §rin arena §e" + arena.getId()));
         startMatchCountdown(() -> {
@@ -117,7 +134,11 @@ public class BridgeMatch {
         UUID uid = player.getUniqueId();
         long now = System.currentTimeMillis();
         Long lastTime = lastGoalTime.get(uid);
-        if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) return;
+        if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) {
+            plugin.getLogger().info("[Bridge] Goal cooldown: " + player.getName()
+                    + " (" + (now - lastTime) + "ms since last)");
+            return;
+        }
         lastGoalTime.put(uid, now);
 
         Location loc = player.getLocation();
@@ -133,6 +154,10 @@ public class BridgeMatch {
             opponentUid = redPlayer;
             scoringTeam = Team.BLUE;
         } else {
+            plugin.getLogger().info("[Bridge] Goal miss: " + player.getName()
+                    + " at " + fmtLoc(loc)
+                    + " isRed=" + uid.equals(redPlayer) + " isBlue=" + uid.equals(bluePlayer)
+                    + " inRedGoal=" + arena.isInsideRedGoal(loc) + " inBlueGoal=" + arena.isInsideBlueGoal(loc));
             return;
         }
 
@@ -198,6 +223,7 @@ public class BridgeMatch {
         if (state == MatchState.ENDED) return;
         state = MatchState.ENDED;
         cancelCountdown();
+        if (voidCheckTask != null) { voidCheckTask.cancel(); voidCheckTask = null; }
 
         unfreezePlayer(redPlayer);
         unfreezePlayer(bluePlayer);
@@ -279,16 +305,21 @@ public class BridgeMatch {
             redReleaseSnapshot = captureFloor3x3(arena.getRedSpawn());
             plugin.getLogger().warning("[Bridge] Arena '" + arena.getId()
                     + "' has no red release zone — using 3×3 fallback under red spawn. "
-                    + "Run /bridge setredrelease1 and /bridge setredrelease2 to configure it.");
+                    + "Run /bridge setredrelease <arena> to configure it.");
         }
+        plugin.getLogger().info("[Bridge] Captured " + redReleaseSnapshot.size()
+                + " red release blocks for arena '" + arena.getId() + "'.");
+
         if (arena.hasBlueRelease()) {
             blueReleaseSnapshot = captureRegion(arena.getBlueRelease1(), arena.getBlueRelease2());
         } else {
             blueReleaseSnapshot = captureFloor3x3(arena.getBlueSpawn());
             plugin.getLogger().warning("[Bridge] Arena '" + arena.getId()
                     + "' has no blue release zone — using 3×3 fallback under blue spawn. "
-                    + "Run /bridge setbluerelease1 and /bridge setbluerelease2 to configure it.");
+                    + "Run /bridge setbluerelease <arena> to configure it.");
         }
+        plugin.getLogger().info("[Bridge] Captured " + blueReleaseSnapshot.size()
+                + " blue release blocks for arena '" + arena.getId() + "'.");
     }
 
     private List<BlockSnapshot> captureRegion(Location p1, Location p2) {
@@ -318,11 +349,15 @@ public class BridgeMatch {
     }
 
     private void restoreReleaseZones() {
+        plugin.getLogger().info("[Bridge] Restoring " + redReleaseSnapshot.size()
+                + " red + " + blueReleaseSnapshot.size() + " blue release blocks in arena '" + arena.getId() + "'.");
         restoreSnapshot(redReleaseSnapshot);
         restoreSnapshot(blueReleaseSnapshot);
     }
 
     private void clearReleaseZones() {
+        plugin.getLogger().info("[Bridge] Clearing " + redReleaseSnapshot.size()
+                + " red + " + blueReleaseSnapshot.size() + " blue release blocks in arena '" + arena.getId() + "'.");
         clearSnapshot(redReleaseSnapshot);
         clearSnapshot(blueReleaseSnapshot);
     }
@@ -548,6 +583,73 @@ public class BridgeMatch {
             opponent.sendMessage(Component.text("§c" + scorer.getName() + " scored! Score: " + scoreLine));
             opponent.playSound(opponent.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
         }
+    }
+
+    // ── Void check ────────────────────────────────────────────────────────────
+
+    private void startVoidCheck() {
+        if (!arena.hasVoidLevel()) return;
+        voidCheckTask = new BukkitRunnable() {
+            @Override public void run() {
+                if (state == MatchState.ENDED) { cancel(); return; }
+                if (state != MatchState.ACTIVE) return;
+                int voidY = arena.getVoidLevel();
+                for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+                    Player p = Bukkit.getPlayer(uid);
+                    if (p == null || !p.isOnline()) continue;
+                    if (p.getLocation().getY() <= voidY) {
+                        handleVoidFall(uid);
+                    }
+                }
+            }
+        };
+        voidCheckTask.runTaskTimer(plugin, 5L, 5L);
+    }
+
+    private void handleVoidFall(UUID uid) {
+        Player p = Bukkit.getPlayer(uid);
+        if (p == null) return;
+        Team team = uid.equals(redPlayer) ? Team.RED : Team.BLUE;
+        Location spawn = uid.equals(redPlayer) ? arena.getRedSpawn() : arena.getBlueSpawn();
+        plugin.getLogger().info("[Bridge] " + p.getName() + " fell below void Y=" + arena.getVoidLevel()
+                + " — respawning at " + team + " spawn " + fmtLoc(spawn));
+        p.setFallDistance(0f);
+        clearEffects(p);
+        teleportSafe(uid, spawn);
+        giveLoadout(uid, team);
+    }
+
+    // ── Death respawn support ─────────────────────────────────────────────────
+
+    public Location getTeamSpawn(UUID uid) {
+        if (uid.equals(redPlayer)) return arena.getRedSpawn();
+        if (uid.equals(bluePlayer)) return arena.getBlueSpawn();
+        return null;
+    }
+
+    public Team getTeam(UUID uid) {
+        if (uid.equals(redPlayer)) return Team.RED;
+        if (uid.equals(bluePlayer)) return Team.BLUE;
+        return null;
+    }
+
+    public void respawnPlayer(UUID uid) {
+        if (state == MatchState.ENDED) return;
+        Player p = Bukkit.getPlayer(uid);
+        if (p == null) return;
+        Team team = getTeam(uid);
+        if (team == null) return;
+        plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
+                + " in arena '" + arena.getId() + "'.");
+        giveLoadout(uid, team);
+    }
+
+    // ── Location format helper ────────────────────────────────────────────────
+
+    private String fmtLoc(Location loc) {
+        if (loc == null) return "null";
+        String w = loc.getWorld() != null ? loc.getWorld().getName() : "?";
+        return w + "(" + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ() + ")";
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────

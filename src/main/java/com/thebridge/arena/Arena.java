@@ -36,6 +36,8 @@ public class Arena {
 
     private String schematicName;
 
+    private Integer voidLevel = null;
+
     private final List<Location> signs = new ArrayList<>();
 
     public Arena(String id) {
@@ -165,6 +167,10 @@ public class Arena {
     public boolean hasRegion() {
         return pos1 != null && pos2 != null;
     }
+
+    public Integer getVoidLevel() { return voidLevel; }
+    public void setVoidLevel(Integer voidLevel) { this.voidLevel = voidLevel; }
+    public boolean hasVoidLevel() { return voidLevel != null; }
 
     @Override
     public String toString() {
