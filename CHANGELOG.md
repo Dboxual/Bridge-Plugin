@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.2 — 2026-05-17
+### Fixed
+- **Wand left-click now reliably sets pos1 in all game modes.**
+  - `PlayerInteractEvent.LEFT_CLICK_BLOCK` handles pos1 in survival (fires on first click before block damage).
+  - `BlockBreakEvent` is a creative-mode safety net (blocks break instantly, interact event may be skipped); an `isSameBlock` guard prevents a duplicate message when both events fire in the same tick.
+  - `BlockDamageEvent` is cancelled while holding the wand — no crack animation plays in survival mode.
+- **Two selections are properly independent.** `setPos1` and `setPos2` write to separate array slots; neither overwrites the other. Location is always stored from `block.getLocation()` (clicked block), never from player position.
+- **Visual outline after every selection.** When both pos1 and pos2 are set, lime-green DUST particles trace all 12 edges of the cuboid, visible only to the selecting player. Works the same for the first selection after either position is updated.
+- **Added `/bridge selection`** — shows pos1, pos2, world name, size (WxHxD and total blocks), and validity. Also re-draws the particle outline.
+- **`/bridge setredgoal` / `setbluegoal`** confirmed to read from wand pos1/pos2 (not player location); no logic change needed, bug was entirely in WandListener.
+- **Scoring uses proper min/max normalization** (`Math.min`/`Math.max` on all three axes); regions work correctly regardless of which corner was clicked first.
+
 ## v1.1.1 — 2026-05-17
 ### Fixed / Changed
 - **Goal regions replace single-block goals.** Each goal is now a selectable cuboid region (two corner blocks). Scoring triggers whenever a player's block position is inside the opponent's goal region. Inclusive block-coordinate check — generous for Bedrock/Geyser players.

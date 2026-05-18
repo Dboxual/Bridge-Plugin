@@ -60,6 +60,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setpos1"      -> handleSetLoc(sender, args, Field.POS1);
             case "setpos2"      -> handleSetLoc(sender, args, Field.POS2);
             case "wand"         -> handleWand(sender);
+            case "selection"    -> handleSelection(sender);
             case "setsign"      -> handleSetSign(sender, args);
             case "showgoals"    -> handleShowGoals(sender, args);
             case "save"         -> handleSave(sender, args);
@@ -179,6 +180,36 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(PREFIX + "§aGiven §6Bridge Setup Wand§a. "
                 + "§7Left-click = pos1, right-click = pos2. "
                 + "Then run §b/bridge setredgoal§7 or §b/bridge setbluegoal§7.");
+    }
+
+    private void handleSelection(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(PREFIX + "§cOnly players can use this command."); return;
+        }
+        UUID uid = player.getUniqueId();
+        Location p1 = plugin.getWandManager().getPos1(uid);
+        Location p2 = plugin.getWandManager().getPos2(uid);
+
+        sender.sendMessage(PREFIX + "§e=== Wand Selection ===");
+        sender.sendMessage("§7Pos1: " + (p1 != null ? "§f" + fmtLocFull(p1) : "§cnot set"));
+        sender.sendMessage("§7Pos2: " + (p2 != null ? "§f" + fmtLocFull(p2) : "§cnot set"));
+
+        if (p1 == null || p2 == null) {
+            sender.sendMessage("§7Valid: §cfalse §7— need both pos1 and pos2");
+            return;
+        }
+        if (p1.getWorld() == null || !p1.getWorld().equals(p2.getWorld())) {
+            sender.sendMessage("§7Valid: §cfalse §7— positions are in different worlds");
+            return;
+        }
+
+        int sx = Math.abs(p1.getBlockX() - p2.getBlockX()) + 1;
+        int sy = Math.abs(p1.getBlockY() - p2.getBlockY()) + 1;
+        int sz = Math.abs(p1.getBlockZ() - p2.getBlockZ()) + 1;
+        sender.sendMessage("§7World: §f" + p1.getWorld().getName());
+        sender.sendMessage("§7Size:  §f" + sx + "x" + sy + "x" + sz + " §7(" + (sx * sy * sz) + " blocks)");
+        sender.sendMessage("§7Valid: §atrue");
+        plugin.getWandManager().showSelectionOutline(player);
     }
 
     private void handleSetSign(CommandSender sender, String[] args) {
@@ -394,11 +425,13 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setpos1", "setpos2",
-                    "wand", "setsign", "showgoals",
+                    "wand", "selection", "setsign", "showgoals",
                     "save", "reset", "debug"), args[0]);
         }
-        // wand takes no second argument
-        if (args.length == 2 && !args[0].equalsIgnoreCase("list") && !args[0].equalsIgnoreCase("wand")) {
+        // wand and selection take no second argument
+        if (args.length == 2 && !args[0].equalsIgnoreCase("list")
+                && !args[0].equalsIgnoreCase("wand")
+                && !args[0].equalsIgnoreCase("selection")) {
             return plugin.getArenaManager().getAllArenas().stream()
                     .map(Arena::getId)
                     .filter(id -> id.startsWith(args[1].toLowerCase()))
@@ -431,6 +464,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setbluespawn §f<arena>   §7Set blue spawn at your location");
         sender.sendMessage("  §b/bridge setlobby §f<arena>       §7Set lobby/waiting spawn");
         sender.sendMessage("  §b/bridge wand                    §7Get the goal-region selection wand");
+        sender.sendMessage("  §b/bridge selection               §7Show current wand selection (pos1/pos2/size)");
         sender.sendMessage("  §b/bridge setredgoal §f<arena>     §7Set red goal region (wand selection)");
         sender.sendMessage("  §b/bridge setbluegoal §f<arena>    §7Set blue goal region (wand selection)");
         sender.sendMessage("  §b/bridge showgoals §f<arena>      §7Show goal regions with particles (10s)");

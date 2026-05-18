@@ -40,7 +40,8 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge setredspawn <arena>` | Set red team spawn at your location |
 | `/bridge setbluespawn <arena>` | Set blue team spawn at your location |
 | `/bridge setlobby <arena>` | Set lobby/waiting spawn at your location |
-| `/bridge wand` | Get the Bridge Setup Wand (left=pos1, right=pos2) |
+| `/bridge wand` | Get the Bridge Setup Wand (left-click block=pos1, right-click block=pos2) |
+| `/bridge selection` | Show current wand selection: pos1, pos2, world, dimensions |
 | `/bridge setredgoal <arena>` | Set red goal region from wand selection |
 | `/bridge setbluegoal <arena>` | Set blue goal region from wand selection |
 | `/bridge showgoals <arena>` | Visualise goal regions with particles for 10 s |
@@ -58,10 +59,13 @@ The plugin **will not load** unless FAWE is installed on the server.
 1. `/bridge create <arena>` — create the arena entry.
 2. Stand at each spawn and run the corresponding `set*` command. The world is detected automatically.
 3. **Goal regions:** run `/bridge wand` to receive the wand.
-   - Left-click one corner of the goal area → pos1 selected.
-   - Right-click the opposite corner → pos2 selected.
-   - Run `/bridge setredgoal <arena>` (or `setbluegoal`). Repeat for the other team.
-   - Use `/bridge showgoals <arena>` to verify the regions with particles.
+   - **Left-click** a block → pos1 set (message + coordinates shown in chat).
+   - **Right-click** a block → pos2 set (message + coordinates shown in chat).
+   - When both corners are selected, lime-green particles outline the cuboid — confirm the shape looks right.
+   - Run `/bridge selection` to inspect dimensions (W×H×D) and verify the selection is valid.
+   - Run `/bridge setredgoal <arena>` — saves the current wand selection as the red goal region.
+   - Repeat with `/bridge setbluegoal <arena>` for blue.
+   - Use `/bridge showgoals <arena>` to overlay goal regions with red/blue particles at any time.
 4. `/bridge setpos1 <arena>` and `/bridge setpos2 <arena>` — mark the full arena region to reset between rounds.
 5. `/bridge save <arena>` — snapshot the region as a schematic.
 6. Place a sign, look at it, `/bridge setsign <arena>` — sign updates automatically.

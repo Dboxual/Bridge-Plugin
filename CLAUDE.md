@@ -18,12 +18,12 @@ TheBridgePlugin               — entry point; wires all managers + registers li
   MatchManager                — tracks active BridgeMatch instances; plugin-teleport flag set
     BridgeMatch               — single match: countdown, scoring, reset, forfeit; score cooldown
   QueueManager                — per-arena player queues; starts match when 2 queued
-  WandManager                 — per-player pos1/pos2 selections for goal region setup
+  WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
   BridgeCommand               — /bridge admin subcommands + tab completion
   SignListener                — right-click queue sign → join/leave queue
   GoalListener                — PlayerMoveEvent → goal region detection (block-change only)
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
-  WandListener                — left/right-click with wand → pos1/pos2 selection
+  WandListener                — PlayerInteractEvent (pos1/pos2), BlockBreakEvent (creative safety net), BlockDamageEvent (cancel crack animation)
 ```
 
 ---
@@ -108,7 +108,7 @@ Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 # Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.1.1.jar
+# Output: build/TheBridge-1.1.2.jar
 ```
 
 Classpath separator is `;` (Windows javac). `build.gradle.kts` exists for IDE dependency resolution only.
