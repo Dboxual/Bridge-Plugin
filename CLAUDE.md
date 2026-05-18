@@ -67,8 +67,9 @@ On startup, arenas that are fully configured and have a saved schematic are set 
 2. `start()`: captures spawn floor blocks, clears inventories, teleports to spawns, gives loadout, freezes players, runs 5-second countdown → `state = ACTIVE`
 3. `GoalListener.onMove` fires at HIGHEST priority on every move event:
    - If player is frozen → redirect position back, allow rotation only, return
-   - If state is ACTIVE and block changed → call `match.onGoalEntered(player)`
-4. `onGoalEntered()`: verifies the player is inside the correct goal region, increments score, updates scoreboard, shows goal title+sound
+   - If state is ACTIVE and block changed → call `match.onGoalEntered(player, event.getTo())`
+   - **Must pass `event.getTo()`** — `player.getLocation()` returns the FROM position during the event and will always miss the goal region.
+4. `onGoalEntered(Player, Location to)`: verifies the player is inside the correct goal region using `to`, increments score, updates scoreboard, shows goal title+sound
 5. If no win: `softReset()` — teleports both to spawn, heals, restores floor, re-gives loadout, freezes, 3-second countdown, drops floor → `state = ACTIVE`
 6. If win: `endMatch()` — announces winner with title+sound, clears inventories, teleports to lobby, clears arena entities, removes match, then async FAWE reset → `state = WAITING`
 7. Disconnect: `MatchListener` → `match.onPlayerDisconnect()` → `endMatch(opponent)`
@@ -82,8 +83,12 @@ Two completely separate systems:
 ### Soft reset (between rounds)
 - No FAWE operation
 - Triggered from `BridgeMatch.softReset()` after a non-winning goal
-- Sequence: teleport → heal/clear effects → restore spawn floor (3×3 at Y−1) → give loadout → freeze → 3-second countdown → drop floor → unfreeze → ACTIVE
-- Captured floor `BlockData` is stored at match start; re-placed before each round; removed after countdown
+- Sequence: teleport → heal/clear effects → restore release zone → give loadout → freeze → 3-second countdown → `clearReleaseZones()` → unfreeze → ACTIVE
+- Captured `BlockSnapshot` list is built once at match start; re-placed before each round; set to AIR after countdown
+
+### Match-start release
+- At the end of the initial 5-second countdown, `clearReleaseZones()` is also called (same as soft-reset end).
+- **Do not remove this call** — without it, players stand on solid blocks for the entire match.
 
 ### Full reset (match end only)
 - FAWE `resetArena()` async paste at `clipboard.getOrigin()`
@@ -113,7 +118,15 @@ Players also receive 20 HP, 20 food, 20 saturation on each load.
 
 ## Release zone mechanic
 
-`captureReleaseZones()` runs at match start. If `arena.hasRedRelease()` / `hasBlueRelease()` is true, the full configured cuboid is snapshotted block-by-block into `redReleaseSnapshot` / `blueReleaseSnapshot`. Otherwise the 3×3 fallback at Y−1 under each spawn is used and a `WARNING` is logged to console. On each soft reset: `restoreReleaseZones()` re-places all snapshotted blocks (floor is solid for teleport landing); after the 3-second countdown `clearReleaseZones()` sets them all to AIR. The schematic reset at match end restores them permanently via FAWE.
+`captureReleaseZones()` runs at match start. If `arena.hasRedRelease()` / `hasBlueRelease()` is true, the full configured cuboid is snapshotted block-by-block into `redReleaseSnapshot` / `blueReleaseSnapshot`. Otherwise the 3×3 fallback at Y−1 under each spawn is used and a `WARNING` is logged to console.
+
+`clearReleaseZones()` is called in **two places**:
+1. At the end of the initial match-start countdown (inside `startMatchCountdown` onFinish).
+2. At the end of each soft-reset countdown (inside `startSoftCountdown` onFinish).
+
+`restoreReleaseZones()` is called at the start of `softReset()` so the floor is solid before players land.
+
+The schematic reset at match end restores them permanently via FAWE.
 
 Commands: `/bridge setredrelease <arena>` and `/bridge setbluerelease <arena>` — use the Bridge wand to select the region (same flow as `/bridge setredgoal`), then run the command. Stored in `Arena` as `redRelease1/2`, `blueRelease1/2`. Persisted in `arenas.yml` under `red-release-1/2`, `blue-release-1/2`.
 
@@ -127,14 +140,14 @@ Commands: `/bridge setredrelease <arena>` and `/bridge setbluerelease <arena>` �
 
 Created in `setupScoreboard()` at match start; assigned to both players via `player.setScoreboard(sb)`. Updated in `updateScoreboard()` after each goal. Cleared (players set to main scoreboard) in `endMatch()`.
 
-Layout (sidebar, top to bottom):
+`objective.numberFormat(NumberFormat.blank())` (Paper 1.21 API — `io.papermc.paper.scoreboard.numbers.NumberFormat`) hides the numeric scores on the right side of the sidebar. Do not remove this call or the numbers reappear.
+
+Layout (sidebar, no right-side numbers):
 ```
-[Title] The Bridge (gold)
+The Bridge   ← gold bold title
 Arena: <id>
-────────────
 <Red name>: <score>
 <Blue name>: <score>
-────────────
 First to <N>
 ```
 
@@ -173,7 +186,7 @@ Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 # Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.2.2.jar
+# Output: build/TheBridge-1.2.4.jar
 ```
 
 Classpath separator is auto-detected: `;` on Windows (Git Bash/MSYS), `:` on macOS/Linux. `build.gradle.kts` exists for IDE dependency resolution only.

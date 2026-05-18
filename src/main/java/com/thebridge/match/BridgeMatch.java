@@ -20,6 +20,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -120,6 +121,8 @@ public class BridgeMatch {
 
         broadcast(Component.text("§aMatch starting! §cRed §rvs §9Blue §rin arena §e" + arena.getId()));
         startMatchCountdown(() -> {
+            // Remove floor blocks so players fall into the arena (same as soft-reset countdown end).
+            clearReleaseZones();
             unfreezePlayer(redPlayer);
             unfreezePlayer(bluePlayer);
             state = MatchState.ACTIVE;
@@ -128,36 +131,51 @@ public class BridgeMatch {
 
     // ── Scoring ───────────────────────────────────────────────────────────────
 
-    public void onGoalEntered(Player player) {
+    // to = event.getTo() from GoalListener — the block the player just entered.
+    // player.getLocation() is still the FROM position during a move event, so we must
+    // pass the TO location explicitly to get the correct block for the region check.
+    public void onGoalEntered(Player player, Location to) {
         if (state != MatchState.ACTIVE) return;
 
         UUID uid = player.getUniqueId();
         long now = System.currentTimeMillis();
         Long lastTime = lastGoalTime.get(uid);
         if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) {
-            plugin.getLogger().info("[Bridge] Goal cooldown: " + player.getName()
-                    + " (" + (now - lastTime) + "ms since last)");
+            debugAdmin("Goal COOLDOWN: " + player.getName() + " (" + (now - lastTime) + "ms ago)");
             return;
         }
         lastGoalTime.put(uid, now);
 
-        Location loc = player.getLocation();
+        boolean isRed  = uid.equals(redPlayer);
+        boolean isBlue = uid.equals(bluePlayer);
+        boolean inRedGoal  = arena.isInsideRedGoal(to);
+        boolean inBlueGoal = arena.isInsideBlueGoal(to);
+
         UUID opponentUid;
         Team scoringTeam;
 
-        if (uid.equals(redPlayer) && arena.isInsideBlueGoal(loc)) {
+        if (isRed && inBlueGoal) {
             redScore++;
             opponentUid = bluePlayer;
             scoringTeam = Team.RED;
-        } else if (uid.equals(bluePlayer) && arena.isInsideRedGoal(loc)) {
+            debugAdmin("Goal SCORED: " + player.getName() + " (RED) entered blue goal → " + redScore + "-" + blueScore);
+        } else if (isBlue && inRedGoal) {
             blueScore++;
             opponentUid = redPlayer;
             scoringTeam = Team.BLUE;
+            debugAdmin("Goal SCORED: " + player.getName() + " (BLUE) entered red goal → " + redScore + "-" + blueScore);
         } else {
-            plugin.getLogger().info("[Bridge] Goal miss: " + player.getName()
-                    + " at " + fmtLoc(loc)
-                    + " isRed=" + uid.equals(redPlayer) + " isBlue=" + uid.equals(bluePlayer)
-                    + " inRedGoal=" + arena.isInsideRedGoal(loc) + " inBlueGoal=" + arena.isInsideBlueGoal(loc));
+            String reason;
+            if (!isRed && !isBlue) {
+                reason = "player not registered in this match";
+            } else {
+                reason = "team=" + (isRed ? "RED" : "BLUE")
+                        + " at=" + fmtLoc(to)
+                        + " inRedGoal=" + inRedGoal + " inBlueGoal=" + inBlueGoal
+                        + (isRed  && !inBlueGoal ? " (red must enter BLUE goal)" : "")
+                        + (isBlue && !inRedGoal  ? " (blue must enter RED goal)"  : "");
+            }
+            debugAdmin("Goal MISS: " + player.getName() + " — " + reason);
             return;
         }
 
@@ -349,17 +367,29 @@ public class BridgeMatch {
     }
 
     private void restoreReleaseZones() {
-        plugin.getLogger().info("[Bridge] Restoring " + redReleaseSnapshot.size()
-                + " red + " + blueReleaseSnapshot.size() + " blue release blocks in arena '" + arena.getId() + "'.");
         restoreSnapshot(redReleaseSnapshot);
         restoreSnapshot(blueReleaseSnapshot);
+        debugAdmin("Release RESTORED: arena=" + arena.getId()
+                + " red=" + redReleaseSnapshot.size() + " blue=" + blueReleaseSnapshot.size() + " blocks");
     }
 
     private void clearReleaseZones() {
-        plugin.getLogger().info("[Bridge] Clearing " + redReleaseSnapshot.size()
-                + " red + " + blueReleaseSnapshot.size() + " blue release blocks in arena '" + arena.getId() + "'.");
-        clearSnapshot(redReleaseSnapshot);
-        clearSnapshot(blueReleaseSnapshot);
+        clearAndDebug("RED",  redReleaseSnapshot,  arena.hasRedRelease());
+        clearAndDebug("BLUE", blueReleaseSnapshot, arena.hasBlueRelease());
+    }
+
+    private void clearAndDebug(String team, List<BlockSnapshot> snapshot, boolean hasConfigured) {
+        if (snapshot.isEmpty()) {
+            String reason = hasConfigured
+                    ? "region saved 0 blocks — verify /bridge setredrelease / setbluerelease selection"
+                    : "no release zone configured — run /bridge setredrelease or setbluerelease";
+            debugAdmin("Release CLEAR SKIPPED: arena=" + arena.getId() + " team=" + team + " — " + reason);
+            return;
+        }
+        String world = snapshot.get(0).world().getName();
+        clearSnapshot(snapshot);
+        debugAdmin("Release CLEARED: arena=" + arena.getId()
+                + " team=" + team + " world=" + world + " blocks=" + snapshot.size());
     }
 
     private void restoreSnapshot(List<BlockSnapshot> snapshots) {
@@ -422,6 +452,8 @@ public class BridgeMatch {
         this.objective  = scoreboard.registerNewObjective("bridge", Criteria.DUMMY,
                 Component.text("The Bridge", NamedTextColor.GOLD, TextDecoration.BOLD));
         this.objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        // Hide the numeric scores on the right side of the sidebar.
+        this.objective.numberFormat(NumberFormat.blank());
         updateScoreboard();
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
@@ -642,6 +674,17 @@ public class BridgeMatch {
         plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
                 + " in arena '" + arena.getId() + "'.");
         giveLoadout(uid, team);
+    }
+
+    // ── Admin debug helper ────────────────────────────────────────────────────
+
+    private void debugAdmin(String msg) {
+        plugin.getLogger().info("[Bridge] " + msg);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.hasPermission("bridge.admin")) {
+                p.sendMessage("§8[§6Bridge§8] §7" + msg);
+            }
+        }
     }
 
     // ── Location format helper ────────────────────────────────────────────────

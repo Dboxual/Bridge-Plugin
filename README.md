@@ -58,6 +58,7 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge showgoals <arena>` | Visualise goal regions with particles for 10 s |
 | `/bridge setredrelease <arena>` | Set red release zone from wand selection |
 | `/bridge setbluerelease <arena>` | Set blue release zone from wand selection |
+| `/bridge setvoidlevel <arena>` | Set void Y level at your current position |
 | `/bridge debug <arena>` | Dump full arena and match status |
 | `/bridge setpos1 <arena>` | Set reset region corner 1 at your location |
 | `/bridge setpos2 <arena>` | Set reset region corner 2 at your location |
@@ -128,5 +129,5 @@ cp ../Pinpoint/libs/*.jar libs/
 
 # 2. Build
 bash build.sh
-# Output: build/TheBridge-1.2.0.jar
+# Output: build/TheBridge-1.2.4.jar
 ```

@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.thebridge"
-version = "1.2.3"
+version = "1.2.4"
 description = "TheBridge"
 
 java {

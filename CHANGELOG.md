@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.2.4 — 2026-05-18
+### Fixed — three core gameplay bugs
+
+#### 1. Release zone never opened at match start
+- **Root cause:** `clearReleaseZones()` was only called at the end of the soft-reset countdown, never at the end of the initial match-start countdown. Players stood on solid blocks the whole match.
+- **Fix:** `clearReleaseZones()` is now called inside `startMatchCountdown`'s `onFinish` callback, immediately before unfreezing players. Floor disappears, players fall into arena.
+
+#### 2. Scoring never registered
+- **Root cause:** `onGoalEntered` called `player.getLocation()`, which returns the *from* position during a `PlayerMoveEvent`. The new block (the goal) is at `event.getTo()`, never `player.getLocation()`. Every goal check was against the position the player had *just left*, so it always missed.
+- **Fix:** `GoalListener` now passes `event.getTo()` into `onGoalEntered(Player, Location)`. Goal region checks use the TO location.
+
+#### 3. Scoreboard showing right-side numbers (6, 5, 4, 3, 2, 1)
+- **Fix:** `objective.numberFormat(NumberFormat.blank())` (Paper 1.21 API) hides all score numbers for the sidebar objective. Scoreboard now shows only arena name, red/blue player scores, and first-to-N.
+
+#### Debug messages added
+- **Release:** In-game admin message + console log on every release clear: `Release CLEARED: arena=X team=RED/BLUE world=W blocks=N`. If 0 blocks or no zone configured, prints the exact reason.
+- **Release restore:** `Release RESTORED: arena=X red=N blue=N blocks` on each soft-reset restore.
+- **Scoring:** In-game admin message on every goal check: `Goal SCORED` (with team and running score) or `Goal MISS` (with team, coordinates, inRedGoal/inBlueGoal flags, and human-readable reason). `Goal COOLDOWN` when the per-player 2-second cooldown blocks a re-score.
+- Messages go to server console (`[Bridge] ...`) and to all online players with `bridge.admin` permission.
+
 ## v1.2.3 — 2026-05-18
 ### Fixed — bug-fix patch for the 1v1 match loop
 

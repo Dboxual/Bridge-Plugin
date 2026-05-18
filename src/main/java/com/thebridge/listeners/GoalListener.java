@@ -38,8 +38,10 @@ public class GoalListener implements Listener {
         }
 
         // Goal detection — only fires when the player crosses a block boundary.
+        // Pass event.getTo() because player.getLocation() is still the FROM position
+        // during a move event; using FROM would always miss the goal region.
         if (!event.hasChangedBlock()) return;
         if (match.getState() != MatchState.ACTIVE) return;
-        match.onGoalEntered(player);
+        match.onGoalEntered(player, event.getTo());
     }
 }
