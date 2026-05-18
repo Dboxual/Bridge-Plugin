@@ -5,7 +5,7 @@ BASE="$(cd "$(dirname "$0")" && pwd)"
 BASE_WIN="$(cd "$(dirname "$0")" && pwd -W 2>/dev/null || pwd)"
 LIBS="$BASE_WIN/libs"
 OUT="$BASE_WIN/build/classes"
-JAR="$BASE_WIN/build/TheBridge-1.2.4.jar"
+JAR="$BASE_WIN/build/TheBridge-1.2.5.jar"
 
 rm -rf "$BASE/build/classes" && mkdir -p "$BASE/build/classes"
 find "$BASE/src/main/java" -name "*.java" \

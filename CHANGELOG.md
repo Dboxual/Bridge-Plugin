@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.2.5 — 2026-05-18
+### Fixed — goal detection rewrite + debug spam removed
+
+#### 1. Goal detection: footprint sweep
+**Root cause of remaining scoring failures:** `hasChangedBlock()` only fires once per tick regardless of fall speed. A player falling at terminal velocity (~3.9 blocks/tick) can skip from above the goal region to below it without a single block-change event landing *inside* the region. Additionally, the previous single-point check against `event.getTo()` failed whenever the player's centre was just outside the region boundary but their body overlapped it.
+
+**Fix — `onGoalEntered(Player, Location from, Location to)`:**
+- `GoalListener` no longer gates on `hasChangedBlock()`. It fires on every XYZ position change (rotation-only events are still skipped with a single coordinate comparison).
+- Both the FROM and TO locations from the move event are forwarded to `onGoalEntered`.
+- `touchesOpponentGoal()` sweeps every Y block between `floor(from.Y)` and `floor(to.Y)` (capped at 16 levels), and for each Y checks a **3×3 XZ footprint** centred on the player's feet. The first hit in any of those up-to-144 block positions triggers a score. A single Location object is reused across iterations to avoid allocation overhead.
+- Rules unchanged: RED player touching BLUE goal = RED scores; BLUE touching RED = BLUE scores.
+
+#### 2. Debug spam removed
+- `Goal MISS` and `Goal COOLDOWN` log lines are gone. With the new always-on listener these would fire ~20 times/second during normal movement.
+- Successful goals still log once to console: `[Bridge] GOAL: <name> (RED/BLUE) → N-N`.
+- Release zone messages (CLEARED, RESTORED, SKIPPED) still log to console always; in-game admin messages for *all* debug calls are now gated behind `settings.debug: false` in `config.yml`.
+
+#### 3. `settings.debug` config option
+Added to `config.yml` (default `false`). When set to `true`, release zone and other admin debug messages are also broadcast in-game to online players with `bridge.admin`.
+
 ## v1.2.4 — 2026-05-18
 ### Fixed — three core gameplay bugs
 

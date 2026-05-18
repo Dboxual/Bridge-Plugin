@@ -24,10 +24,11 @@ public class GoalListener implements Listener {
         BridgeMatch match = plugin.getMatchManager().getMatch(player);
         if (match == null) return;
 
-        // Freeze: allow head rotation but cancel any XYZ position change.
+        Location from = event.getFrom();
+        Location to   = event.getTo();
+
+        // Freeze: allow head rotation but block all XYZ movement.
         if (match.isFrozen(player.getUniqueId())) {
-            Location from = event.getFrom();
-            Location to   = event.getTo();
             if (from.getX() != to.getX() || from.getY() != to.getY() || from.getZ() != to.getZ()) {
                 Location frozen = from.clone();
                 frozen.setYaw(to.getYaw());
@@ -37,11 +38,13 @@ public class GoalListener implements Listener {
             return;
         }
 
-        // Goal detection — only fires when the player crosses a block boundary.
-        // Pass event.getTo() because player.getLocation() is still the FROM position
-        // during a move event; using FROM would always miss the goal region.
-        if (!event.hasChangedBlock()) return;
+        // Skip rotation-only events — no position change means no goal can be entered.
+        if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()) return;
+
         if (match.getState() != MatchState.ACTIVE) return;
-        match.onGoalEntered(player, event.getTo());
+
+        // Pass both FROM and TO so onGoalEntered can sweep the full movement path.
+        // This catches players falling through the goal region in a single tick.
+        match.onGoalEntered(player, from, to);
     }
 }

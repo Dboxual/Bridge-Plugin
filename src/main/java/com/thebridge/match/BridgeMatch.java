@@ -131,53 +131,46 @@ public class BridgeMatch {
 
     // ── Scoring ───────────────────────────────────────────────────────────────
 
-    // to = event.getTo() from GoalListener — the block the player just entered.
-    // player.getLocation() is still the FROM position during a move event, so we must
-    // pass the TO location explicitly to get the correct block for the region check.
-    public void onGoalEntered(Player player, Location to) {
+    // Called by GoalListener with both the FROM and TO positions from the move event.
+    // We sweep the full movement path (from.Y → to.Y) and check a 3×3 XZ footprint
+    // at each Y level so that:
+    //   • players walking into the goal register reliably
+    //   • players falling through the goal at high speed cannot skip past it
+    //   • edge cases where the player centre is just outside the region still score
+    public void onGoalEntered(Player player, Location from, Location to) {
         if (state != MatchState.ACTIVE) return;
 
         UUID uid = player.getUniqueId();
+
+        // Cooldown — silent, prevents rapid re-fire while softReset() teleports the player.
         long now = System.currentTimeMillis();
         Long lastTime = lastGoalTime.get(uid);
-        if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) {
-            debugAdmin("Goal COOLDOWN: " + player.getName() + " (" + (now - lastTime) + "ms ago)");
-            return;
-        }
-        lastGoalTime.put(uid, now);
+        if (lastTime != null && now - lastTime < GOAL_COOLDOWN_MS) return;
 
         boolean isRed  = uid.equals(redPlayer);
         boolean isBlue = uid.equals(bluePlayer);
-        boolean inRedGoal  = arena.isInsideRedGoal(to);
-        boolean inBlueGoal = arena.isInsideBlueGoal(to);
+        if (!isRed && !isBlue) return;
 
-        UUID opponentUid;
+        if (!touchesOpponentGoal(isRed, from, to)) return;
+
+        // ── Goal confirmed ────────────────────────────────────────────────────
+        lastGoalTime.put(uid, now);
+
         Team scoringTeam;
+        UUID opponentUid;
 
-        if (isRed && inBlueGoal) {
+        if (isRed) {
             redScore++;
-            opponentUid = bluePlayer;
             scoringTeam = Team.RED;
-            debugAdmin("Goal SCORED: " + player.getName() + " (RED) entered blue goal → " + redScore + "-" + blueScore);
-        } else if (isBlue && inRedGoal) {
-            blueScore++;
-            opponentUid = redPlayer;
-            scoringTeam = Team.BLUE;
-            debugAdmin("Goal SCORED: " + player.getName() + " (BLUE) entered red goal → " + redScore + "-" + blueScore);
+            opponentUid = bluePlayer;
         } else {
-            String reason;
-            if (!isRed && !isBlue) {
-                reason = "player not registered in this match";
-            } else {
-                reason = "team=" + (isRed ? "RED" : "BLUE")
-                        + " at=" + fmtLoc(to)
-                        + " inRedGoal=" + inRedGoal + " inBlueGoal=" + inBlueGoal
-                        + (isRed  && !inBlueGoal ? " (red must enter BLUE goal)" : "")
-                        + (isBlue && !inRedGoal  ? " (blue must enter RED goal)"  : "");
-            }
-            debugAdmin("Goal MISS: " + player.getName() + " — " + reason);
-            return;
+            blueScore++;
+            scoringTeam = Team.BLUE;
+            opponentUid = redPlayer;
         }
+
+        plugin.getLogger().info("[Bridge] GOAL: " + player.getName()
+                + " (" + scoringTeam + ") → " + redScore + "-" + blueScore);
 
         updateScoreboard();
         broadcastGoal(player, opponentUid, scoringTeam);
@@ -189,6 +182,39 @@ public class BridgeMatch {
         } else {
             softReset();
         }
+    }
+
+    // Sweep the player's 3×3 XZ footprint across every Y block between from and to.
+    // Returns true the moment any block in that footprint intersects the opponent's
+    // goal region.  Capped at 16 Y levels to guard against extreme fall distances.
+    private boolean touchesOpponentGoal(boolean isRed, Location from, Location to) {
+        World world = to.getWorld();
+        if (world == null) return false;
+
+        int footX = to.getBlockX();
+        int footZ = to.getBlockZ();
+        int minY  = Math.min((int) Math.floor(from.getY()), (int) Math.floor(to.getY()));
+        int maxY  = Math.min(
+                Math.max((int) Math.floor(from.getY()), (int) Math.floor(to.getY())),
+                minY + 16);
+
+        // Reuse a single Location object to avoid allocating one per loop iteration.
+        Location check = new Location(world, 0, 0, 0);
+
+        for (int y = minY; y <= maxY; y++) {
+            check.setY(y);
+            for (int dx = -1; dx <= 1; dx++) {
+                check.setX(footX + dx);
+                for (int dz = -1; dz <= 1; dz++) {
+                    check.setZ(footZ + dz);
+                    boolean hit = isRed
+                            ? arena.isInsideBlueGoal(check)
+                            : arena.isInsideRedGoal(check);
+                    if (hit) return true;
+                }
+            }
+        }
+        return false;
     }
 
     public void onPlayerDisconnect(UUID uid) {
@@ -677,9 +703,13 @@ public class BridgeMatch {
     }
 
     // ── Admin debug helper ────────────────────────────────────────────────────
+    //
+    // Always logs to console.  In-game messages to admins are only sent when
+    // settings.debug is true in config.yml so they don't spam during normal play.
 
     private void debugAdmin(String msg) {
         plugin.getLogger().info("[Bridge] " + msg);
+        if (!plugin.getConfig().getBoolean("settings.debug", false)) return;
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.hasPermission("bridge.admin")) {
                 p.sendMessage("§8[§6Bridge§8] §7" + msg);

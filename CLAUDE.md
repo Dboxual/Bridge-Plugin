@@ -66,10 +66,12 @@ On startup, arenas that are fully configured and have a saved schematic are set 
 1. Two players right-click a queue sign → `QueueManager.join()` → `MatchManager.createMatch()` → `BridgeMatch.start()`
 2. `start()`: captures spawn floor blocks, clears inventories, teleports to spawns, gives loadout, freezes players, runs 5-second countdown → `state = ACTIVE`
 3. `GoalListener.onMove` fires at HIGHEST priority on every move event:
-   - If player is frozen → redirect position back, allow rotation only, return
-   - If state is ACTIVE and block changed → call `match.onGoalEntered(player, event.getTo())`
-   - **Must pass `event.getTo()`** — `player.getLocation()` returns the FROM position during the event and will always miss the goal region.
-4. `onGoalEntered(Player, Location to)`: verifies the player is inside the correct goal region using `to`, increments score, updates scoreboard, shows goal title+sound
+   - If player is frozen → redirect XYZ back to FROM (preserve yaw/pitch), return
+   - If XYZ unchanged (rotation only) → return early
+   - If state is not ACTIVE → return
+   - Otherwise: `match.onGoalEntered(player, event.getFrom(), event.getTo())`
+   - **Do NOT reinstate `hasChangedBlock()`** — it causes fast-falling players to skip over the goal region entirely.
+4. `onGoalEntered(Player, Location from, Location to)`: calls `touchesOpponentGoal()` which sweeps the player's 3×3 XZ footprint across every Y block from `floor(from.Y)` to `floor(to.Y)` (cap 16). First hit → score. Silent on miss (no logging). Logs once to console on score.
 5. If no win: `softReset()` — teleports both to spawn, heals, restores floor, re-gives loadout, freezes, 3-second countdown, drops floor → `state = ACTIVE`
 6. If win: `endMatch()` — announces winner with title+sound, clears inventories, teleports to lobby, clears arena entities, removes match, then async FAWE reset → `state = WAITING`
 7. Disconnect: `MatchListener` → `match.onPlayerDisconnect()` → `endMatch(opponent)`
@@ -135,6 +137,10 @@ Commands: `/bridge setredrelease <arena>` and `/bridge setbluerelease <arena>` �
 `BridgeMatch` maintains a `frozenPlayers: Set<UUID>`. While a UUID is in this set, `GoalListener.onMove` redirects any XYZ change back to `event.getFrom()` (preserving yaw/pitch). Gravity still applies — only voluntary movement is blocked. The freeze is used during both the match-start countdown and the soft-reset countdown.
 
 ---
+
+## Debug mode
+
+`settings.debug: false` in `config.yml`. When `true`, release zone messages (CLEARED / RESTORED / SKIPPED) are also broadcast in-game to all online `bridge.admin` players. Console always receives these messages regardless. Goal miss/cooldown events are never logged (they fire too frequently with the always-on listener).
 
 ## Scoreboard
 

@@ -118,6 +118,16 @@ settings:
 
 ---
 
+## Configuration
+
+```yaml
+settings:
+  schematics-folder: schematics
+  countdown-seconds: 5
+  points-to-win: 5
+  debug: false   # set true to receive release-zone debug messages in-game
+```
+
 ## Building
 
 Gradle is present for IDE support. Actual compilation uses `build.sh` (Java 25 / Gradle 8.x incompatibility).
@@ -129,5 +139,5 @@ cp ../Pinpoint/libs/*.jar libs/
 
 # 2. Build
 bash build.sh
-# Output: build/TheBridge-1.2.4.jar
+# Output: build/TheBridge-1.2.5.jar
 ```
