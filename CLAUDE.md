@@ -19,7 +19,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
     BridgeMatch               — single match: countdown, scoring, soft reset, full end-reset, forfeit
   QueueManager                — per-arena player queues; starts match when 2 queued
   WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
-  BridgeCommand               — /bridge admin subcommands + tab completion
+  BridgeCommand               — /bridge admin subcommands + tab completion; setarena uses wand selection to set reset region
   SignListener                — right-click queue sign → join/leave queue
   GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
@@ -178,6 +178,16 @@ Both operations use `CompletableFuture.runAsync`. Callbacks return to main threa
 ## ArenaStorage
 
 All arenas stored in `arenas.yml` under `arenas.<id>`. Location fields: `world/x/y/z/yaw/pitch`. Signs: list of `{world, x, y, z}` maps. Null fields omitted. Unknown worlds on load produce null Locations with a warning.
+
+---
+
+## `/bridge setarena` — wand-based reset region
+
+`/bridge setarena <arena>` saves the current Bridge wand selection (pos1/pos2) as the arena's FAWE reset region (stored in `arena.pos1` / `arena.pos2`). This is the recommended replacement for the legacy `/bridge setpos1` + `/bridge setpos2` workflow. Both legacy commands are retained and unchanged.
+
+Flow: run `/bridge wand` → left-click corner 1 → right-click corner 2 → `/bridge setarena <arena>` → `/bridge save <arena>`.
+
+Validation: both wand positions must be set and in the same world.
 
 ---
 

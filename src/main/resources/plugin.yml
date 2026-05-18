@@ -1,5 +1,5 @@
 name: TheBridge
-version: '1.2.5'
+version: '1.2.6'
 main: com.thebridge.TheBridgePlugin
 api-version: '1.21'
 description: The Bridge minigame — arena infrastructure

@@ -60,8 +60,9 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge setbluerelease <arena>` | Set blue release zone from wand selection |
 | `/bridge setvoidlevel <arena>` | Set void Y level at your current position |
 | `/bridge debug <arena>` | Dump full arena and match status |
-| `/bridge setpos1 <arena>` | Set reset region corner 1 at your location |
-| `/bridge setpos2 <arena>` | Set reset region corner 2 at your location |
+| `/bridge setarena <arena>` | Set reset region from wand selection (recommended) |
+| `/bridge setpos1 <arena>` | Set reset region corner 1 at your location (legacy) |
+| `/bridge setpos2 <arena>` | Set reset region corner 2 at your location (legacy) |
 | `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
 | `/bridge save <arena>` | Save the arena region as a schematic |
 | `/bridge reset <arena>` | Restore the arena from its saved schematic |
@@ -85,7 +86,10 @@ The plugin **will not load** unless FAWE is installed on the server.
    - `/bridge setredrelease <arena>` — saves the wand selection as red's release zone.
    - Repeat the wand selection, then `/bridge setbluerelease <arena>` for blue.
    - If not configured, a 3×3 fallback at Y−1 under each spawn is used (a console warning is logged).
-5. `/bridge setpos1 <arena>` and `/bridge setpos2 <arena>` — mark the full arena region to reset at match end.
+5. **Reset region:** use `/bridge wand` to select the full arena region (all blocks that will be restored at match end).
+   - Left-click corner 1, right-click corner 2.
+   - `/bridge setarena <arena>` — saves the wand selection as the reset region.
+   - *(Legacy alternative: stand at each corner and run `/bridge setpos1 <arena>` then `/bridge setpos2 <arena>`)*
 6. `/bridge save <arena>` — snapshot the region as a schematic.
 7. Place a sign, look at it, `/bridge setsign <arena>` — sign updates automatically.
 8. Players right-click the sign to join. Two players → match starts.

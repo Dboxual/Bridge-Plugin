@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.6 — 2026-05-18
+### Added — `/bridge setarena` wand-based reset region setup
+
+- **New command:** `/bridge setarena <arena>` saves the current Bridge wand selection (pos1/pos2) as the arena's reset region. Mirrors the wand-based flow already used for goals and release zones.
+- Validates that both wand corners are set and in the same world before saving.
+- Reports the region dimensions (X×Y×Z, total blocks) and reminds the admin to run `/bridge save <arena>` next.
+- Updated `/bridge save` error message to reference `/bridge setarena` instead of the raw setpos1/setpos2 commands.
+- Updated `/bridge wand` hint message to list `setarena` alongside the other wand commands.
+- `/bridge setpos1` and `/bridge setpos2` are retained as legacy/manual alternatives — no behaviour change.
+- Tab completion updated; `/bridge` usage list shows `setarena (recommended)` and marks setpos1/setpos2 as `(legacy)`.
+
 ## v1.2.5 — 2026-05-18
 ### Fixed — goal detection rewrite + debug spam removed
 
