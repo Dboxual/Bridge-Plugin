@@ -2,7 +2,7 @@
 
 ## Project purpose
 
-TheBridge is a Paper 1.21.x minigame plugin for The Bridge (players score by stepping on the opponent's goal block). Stage 2 is complete: full 1v1 match flow including queue signs, countdowns, goal detection, arena resets between rounds, and disconnect handling.
+TheBridge is a Paper 1.21.x minigame plugin for The Bridge (players score by stepping into the opponent's goal region). Stage 2 is complete: full 1v1 match flow including queue signs, loadout, freeze countdowns, goal detection, soft per-round resets (no FAWE), full schematic reset at match end, sidebar scoreboard, and disconnect handling.
 
 ---
 
@@ -16,14 +16,14 @@ TheBridgePlugin               — entry point; wires all managers + registers li
     ArenaState                — enum: DISABLED, WAITING, STARTING, IN_GAME, RESETTING
   SchematicManager            — FAWE async save/restore with console debug logging
   MatchManager                — tracks active BridgeMatch instances; plugin-teleport flag set
-    BridgeMatch               — single match: countdown, scoring, reset, forfeit; score cooldown
+    BridgeMatch               — single match: countdown, scoring, soft reset, full end-reset, forfeit
   QueueManager                — per-arena player queues; starts match when 2 queued
   WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
   BridgeCommand               — /bridge admin subcommands + tab completion
   SignListener                — right-click queue sign → join/leave queue
-  GoalListener                — PlayerMoveEvent → goal region detection (block-change only)
+  GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
-  WandListener                — PlayerInteractEvent (pos1/pos2), BlockBreakEvent (creative safety net), BlockDamageEvent (cancel crack animation)
+  WandListener                — PlayerInteractEvent (pos1/pos2), BlockBreakEvent, BlockDamageEvent
 ```
 
 ---
@@ -35,16 +35,17 @@ TheBridgePlugin               — entry point; wires all managers + registers li
 | Field | Purpose |
 |---|---|
 | `id` | Unique lowercase identifier; immutable after creation |
-| `redSpawn`, `blueSpawn` | Team spawn points used at match start |
+| `redSpawn`, `blueSpawn` | Team spawn points used at match start and soft resets |
 | `lobbySpawn` | Where players are sent after the match ends |
 | `redGoalPos1/2`, `blueGoalPos1/2` | Two-corner regions; scoring fires when a player's block position is inside the opponent's region |
-| `pos1`, `pos2` | FAWE region corners for save/reset |
+| `redRelease1/2`, `blueRelease1/2` | Two-corner regions defining the floor blocks removed each round to drop players into the arena. If not set, a 3×3 fallback at Y−1 under each spawn is used and a console warning is logged. |
+| `pos1`, `pos2` | FAWE region corners for end-of-match save/reset |
 | `schematicName` | Filename (without extension); defaults to `id` |
 | `enabled` | Whether the arena is open for play |
 | `state` | Current lifecycle phase (see `ArenaState`) |
 | `signs` | List of registered queue sign locations |
 
-Each `Location` stores its own world. There is no global arena world — the plugin works in any world automatically.
+Each `Location` stores its own world. There is no global arena world.
 
 `isFullyConfigured()` returns true when every required location is set. `hasRegion()` checks only pos1/pos2.
 
@@ -53,9 +54,7 @@ Each `Location` stores its own world. There is no global arena world — the plu
 ## ArenaState lifecycle
 
 ```
-DISABLED → WAITING → IN_GAME → RESETTING → WAITING (loop)
-                            ↓
-                          ENDED (match over) → WAITING
+DISABLED → WAITING → IN_GAME → RESETTING (FAWE end-of-match) → WAITING (loop)
 ```
 
 On startup, arenas that are fully configured and have a saved schematic are set to `WAITING`. Signs are only clickable in `WAITING` state.
@@ -65,29 +64,95 @@ On startup, arenas that are fully configured and have a saved schematic are set 
 ## Match flow
 
 1. Two players right-click a queue sign → `QueueManager.join()` → `MatchManager.createMatch()` → `BridgeMatch.start()`
-2. `start()`: clears inventories, teleports to spawns, broadcasts start message, runs countdown → `state = ACTIVE`
-3. `GoalListener` fires on every block-change move; calls `match.onGoalEntered(player)` if state is ACTIVE
-4. `onGoalEntered()`: verifies the player is on the correct goal block (`isSameBlock`), increments score
-5. If no win: `resetAndContinue()` — calls `SchematicManager.resetArena()` async, teleports back, runs countdown
-6. If win: `endMatch()` — announces winner, clears inventories, teleports both to `lobbySpawn`, sets arena back to `WAITING`
+2. `start()`: captures spawn floor blocks, clears inventories, teleports to spawns, gives loadout, freezes players, runs 5-second countdown → `state = ACTIVE`
+3. `GoalListener.onMove` fires at HIGHEST priority on every move event:
+   - If player is frozen → redirect position back, allow rotation only, return
+   - If state is ACTIVE and block changed → call `match.onGoalEntered(player)`
+4. `onGoalEntered()`: verifies the player is inside the correct goal region, increments score, updates scoreboard, shows goal title+sound
+5. If no win: `softReset()` — teleports both to spawn, heals, restores floor, re-gives loadout, freezes, 3-second countdown, drops floor → `state = ACTIVE`
+6. If win: `endMatch()` — announces winner with title+sound, clears inventories, teleports to lobby, clears arena entities, removes match, then async FAWE reset → `state = WAITING`
 7. Disconnect: `MatchListener` → `match.onPlayerDisconnect()` → `endMatch(opponent)`
+
+---
+
+## Reset system
+
+Two completely separate systems:
+
+### Soft reset (between rounds)
+- No FAWE operation
+- Triggered from `BridgeMatch.softReset()` after a non-winning goal
+- Sequence: teleport → heal/clear effects → restore spawn floor (3×3 at Y−1) → give loadout → freeze → 3-second countdown → drop floor → unfreeze → ACTIVE
+- Captured floor `BlockData` is stored at match start; re-placed before each round; removed after countdown
+
+### Full reset (match end only)
+- FAWE `resetArena()` async paste at `clipboard.getOrigin()`
+- Triggered from `BridgeMatch.endMatch()` after the winning goal or forfeit
+- Arena state: `IN_GAME` → `RESETTING` (during paste) → `WAITING` (after paste)
+
+**Soft reset and full reset must remain completely separate.**
+
+---
+
+## Loadout
+
+Given at match start and on every soft reset:
+
+| Slot | Item |
+|---|---|
+| 0 | Iron Sword |
+| 1 | Bow |
+| 2 | 32× Team-colored Terracotta |
+| 3 | 3× Golden Apple |
+| 8 | 1× Arrow |
+| Armor | Dyed leather (RED or BLUE) |
+
+Players also receive 20 HP, 20 food, 20 saturation on each load.
+
+---
+
+## Release zone mechanic
+
+`captureReleaseZones()` runs at match start. If `arena.hasRedRelease()` / `hasBlueRelease()` is true, the full configured cuboid is snapshotted block-by-block into `redReleaseSnapshot` / `blueReleaseSnapshot`. Otherwise the 3×3 fallback at Y−1 under each spawn is used and a `WARNING` is logged to console. On each soft reset: `restoreReleaseZones()` re-places all snapshotted blocks (floor is solid for teleport landing); after the 3-second countdown `clearReleaseZones()` sets them all to AIR. The schematic reset at match end restores them permanently via FAWE.
+
+Commands: `/bridge setredrelease <arena>` and `/bridge setbluerelease <arena>` — use the Bridge wand to select the region (same flow as `/bridge setredgoal`), then run the command. Stored in `Arena` as `redRelease1/2`, `blueRelease1/2`. Persisted in `arenas.yml` under `red-release-1/2`, `blue-release-1/2`.
+
+## Freeze mechanic
+
+`BridgeMatch` maintains a `frozenPlayers: Set<UUID>`. While a UUID is in this set, `GoalListener.onMove` redirects any XYZ change back to `event.getFrom()` (preserving yaw/pitch). Gravity still applies — only voluntary movement is blocked. The freeze is used during both the match-start countdown and the soft-reset countdown.
+
+---
+
+## Scoreboard
+
+Created in `setupScoreboard()` at match start; assigned to both players via `player.setScoreboard(sb)`. Updated in `updateScoreboard()` after each goal. Cleared (players set to main scoreboard) in `endMatch()`.
+
+Layout (sidebar, top to bottom):
+```
+[Title] The Bridge (gold)
+Arena: <id>
+────────────
+<Red name>: <score>
+<Blue name>: <score>
+────────────
+First to <N>
+```
 
 ---
 
 ## SchematicManager — reset system detail
 
 **Save flow:**
-1. Derive world from `arena.getPos1().getWorld()` — no config lookup.
+1. Derive world from `arena.getPos1().getWorld()`.
 2. Compute `min`/`max` block vectors from `pos1`/`pos2`.
 3. Copy region into `BlockArrayClipboard` (origin = min point).
 4. Write to `<schematics>/<name>.schem` using `BuiltInClipboardFormat.FAST`.
 
 **Reset flow:**
-1. Derive world from `arena.getPos1().getWorld()`.
-2. Read `.schem`; format auto-detected via `ClipboardFormats.findByFile()`.
-3. Paste at `clipboard.getOrigin()` (the saved min point) with `ignoreAirBlocks(false)`.
+1. Read `.schem`; format auto-detected via `ClipboardFormats.findByFile()`.
+2. Paste at `clipboard.getOrigin()` (the saved min point) with `ignoreAirBlocks(false)`.
 
-Both operations use `CompletableFuture.runAsync`. Callbacks return to the main thread via `Bukkit.getScheduler().runTask()`.
+Both operations use `CompletableFuture.runAsync`. Callbacks return to main thread via `Bukkit.getScheduler().runTask()`.
 
 ---
 
@@ -108,10 +173,10 @@ Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 # Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.1.2.jar
+# Output: build/TheBridge-1.2.2.jar
 ```
 
-Classpath separator is `;` (Windows javac). `build.gradle.kts` exists for IDE dependency resolution only.
+Classpath separator is auto-detected: `;` on Windows (Git Bash/MSYS), `:` on macOS/Linux. `build.gradle.kts` exists for IDE dependency resolution only.
 
 ---
 

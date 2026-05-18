@@ -24,6 +24,13 @@ public class Arena {
     private Location blueGoalPos1;
     private Location blueGoalPos2;
 
+    // Release zone regions — the floor blocks removed each round to drop players into the arena.
+    // Defined by two corners (same as goal regions). If not set, a fallback 3×3 platform is used.
+    private Location redRelease1;
+    private Location redRelease2;
+    private Location blueRelease1;
+    private Location blueRelease2;
+
     private Location pos1;
     private Location pos2;
 
@@ -71,6 +78,18 @@ public class Arena {
     public Location getBlueGoalPos2() { return blueGoalPos2; }
     public void setBlueGoalPos2(Location p) { this.blueGoalPos2 = p; }
 
+    public Location getRedRelease1() { return redRelease1; }
+    public void setRedRelease1(Location p) { this.redRelease1 = p; }
+
+    public Location getRedRelease2() { return redRelease2; }
+    public void setRedRelease2(Location p) { this.redRelease2 = p; }
+
+    public Location getBlueRelease1() { return blueRelease1; }
+    public void setBlueRelease1(Location p) { this.blueRelease1 = p; }
+
+    public Location getBlueRelease2() { return blueRelease2; }
+    public void setBlueRelease2(Location p) { this.blueRelease2 = p; }
+
     public Location getPos1() { return pos1; }
     public void setPos1(Location pos1) { this.pos1 = pos1; }
 
@@ -109,8 +128,10 @@ public class Arena {
 
     // ── Goal region checks ────────────────────────────────────────────────────
 
-    public boolean hasRedGoal() { return redGoalPos1 != null && redGoalPos2 != null; }
-    public boolean hasBlueGoal() { return blueGoalPos1 != null && blueGoalPos2 != null; }
+    public boolean hasRedGoal()     { return redGoalPos1  != null && redGoalPos2  != null; }
+    public boolean hasBlueGoal()    { return blueGoalPos1 != null && blueGoalPos2 != null; }
+    public boolean hasRedRelease()  { return redRelease1  != null && redRelease2  != null; }
+    public boolean hasBlueRelease() { return blueRelease1 != null && blueRelease2 != null; }
 
     public boolean isInsideRedGoal(Location loc) {
         return isInsideRegion(loc, redGoalPos1, redGoalPos2);

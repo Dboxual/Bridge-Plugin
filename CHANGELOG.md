@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.2.2 — 2026-05-18
+### Changed — release zone UX aligned with wand system
+- **`/bridge setredrelease <arena>`** and **`/bridge setbluerelease <arena>`** replace the four individual corner commands. Both read the current Bridge wand selection (pos1 + pos2) and save the cuboid region as the team's release zone — identical UX to `/bridge setredgoal` and `/bridge setbluegoal`.
+- **Removed:** `/bridge setredrelease1`, `/bridge setredrelease2`, `/bridge setbluerelease1`, `/bridge setbluerelease2`.
+- Internal storage unchanged: `Arena.redRelease1/2` and `blueRelease1/2` fields, YAML keys `red-release-1/2` and `blue-release-1/2`. Existing arena configs continue to work without migration.
+- Wand hint message updated to also mention `/bridge setredrelease` and `/bridge setbluerelease`.
+
+## v1.2.1 — 2026-05-18
+### Added — configurable release zones
+- **`/bridge setredrelease1 <arena>`** and **`/bridge setredrelease2 <arena>`** — set the two corners of the red team's release zone (the floor blocks removed each round to drop players into the arena). Location is taken from where the admin is standing.
+- **`/bridge setbluerelease1 <arena>`** and **`/bridge setbluerelease2 <arena>`** — same for blue team.
+- Release zones are cuboid regions defined by two corner locations, stored per-team. Any shape and size the admin selects is supported.
+
+### Changed
+- **Soft reset floor mechanic now uses configured release zones.** On match start the full cuboid region is captured (block-by-block snapshot). Before each round the snapshot is restored so players land on solid ground; after the countdown the blocks are set to AIR so players fall through. No schematic paste is involved.
+- **3×3 fallback retained.** If a team's release zone is not configured, the old hardcoded 3×3 platform at Y−1 under the spawn is used as a fallback. A warning is logged to the server console at match start identifying which team is missing the zone configuration.
+- **`/bridge list`** now shows a `[release]` / `[no release]` tag per arena indicating whether both release zones are configured.
+- **`/bridge debug <arena>`** now prints the red and blue release zone corners (or `not set` with a `(fallback 3×3)` note).
+- **`Arena`** — four new location fields: `redRelease1`, `redRelease2`, `blueRelease1`, `blueRelease2`. Helper methods `hasRedRelease()` / `hasBlueRelease()`.
+- **`ArenaStorage`** — serialises the four new fields under keys `red-release-1`, `red-release-2`, `blue-release-1`, `blue-release-2`. Existing arenas without these keys load cleanly with null values (fallback applies).
+
+## v1.2.0 — 2026-05-18
+### Changed — core gameplay loop redesign
+- **Soft reset replaces per-point schematic paste.** After each goal, no FAWE operation runs. Players are teleported back to spawns, healed, and re-given their loadout. The spawn platform blocks are restored so players land on solid ground, then removed after the 3-second countdown so players fall naturally into the arena. Bridges and blocks placed during the round remain — the arena resets only once, at match end.
+- **Full schematic reset on match end.** FAWE paste now runs only in `endMatch()`. The arena is set to `RESETTING` while the paste runs, then to `WAITING` when done.
+- **Standard loadout given at match start and after each soft reset.** Iron sword (slot 0), bow (slot 1), 32 colored terracotta blocks (slot 2), 3 golden apples (slot 3), 1 arrow (slot 8), and full dyed leather armor (red or blue). Players are healed to 20 HP and fed to 20 hunger on each re-load.
+- **Player freeze during countdowns.** Players cannot change their XYZ position during the 5-second match-start countdown or the 3-second soft-reset countdown. Head rotation is still permitted. Implemented via `GoalListener.onMove` at `HIGHEST` priority — position changes are redirected back to the player's frozen location; goal detection is suppressed while frozen.
+- **Spawn floor gate mechanic.** On match start the blocks at Y−1 under each spawn are captured. On soft reset they are restored (3×3 area), then removed after the countdown so gravity drops players into the arena. Full FAWE reset at match end restores them permanently.
+- **Sidebar scoreboard** — assigned to both players at match start. Displays arena name, red/blue player names and current scores, and first-to-N target. Updated after every goal and cleared on match end.
+- **Title + sound feedback on goals.** Scorer sees a large coloured "GOAL!" title with current score and hears a level-up sound. Opponent sees the scorer's name, current score, and hears a villager-no sound.
+- **Title countdowns.** Match start: large yellow numbers counting down to "FIGHT!" (green). Soft reset: large red numbers 3-2-1 counting down to "GO!" (green). Pitch ramps up on the final soft-reset tick for emphasis.
+- **Victory / defeat titles.** Winner sees gold "VICTORY!" with final score + `UI_TOAST_CHALLENGE_COMPLETE` sound. Loser sees red "DEFEAT" with `ENTITY_WITHER_SPAWN` sound.
+- **Arena entity clear on match end.** All non-player entities inside the arena region (arrows, dropped items, etc.) are removed before the FAWE reset.
+- **`GoalListener` priority raised to `HIGHEST`.** Previously `MONITOR` (could not cancel events). Changed to allow the freeze mechanism to redirect position and to ensure goal detection runs after other plugins have processed the move.
+
 ## v1.1.2 — 2026-05-17
 ### Fixed
 - **Wand left-click now reliably sets pos1 in all game modes.**

@@ -97,6 +97,10 @@ public class ArenaStorage {
         arena.setRedGoalPos2(readLocation(s, "red-goal-pos2"));
         arena.setBlueGoalPos1(readLocation(s, "blue-goal-pos1"));
         arena.setBlueGoalPos2(readLocation(s, "blue-goal-pos2"));
+        arena.setRedRelease1(readLocation(s, "red-release-1"));
+        arena.setRedRelease2(readLocation(s, "red-release-2"));
+        arena.setBlueRelease1(readLocation(s, "blue-release-1"));
+        arena.setBlueRelease2(readLocation(s, "blue-release-2"));
         arena.setPos1(readLocation(s, "pos1"));
         arena.setPos2(readLocation(s, "pos2"));
         arena.setSignLocations(readSigns(s));
@@ -116,6 +120,10 @@ public class ArenaStorage {
         writeLocation(base + ".red-goal-pos2",  arena.getRedGoalPos2());
         writeLocation(base + ".blue-goal-pos1", arena.getBlueGoalPos1());
         writeLocation(base + ".blue-goal-pos2", arena.getBlueGoalPos2());
+        writeLocation(base + ".red-release-1",  arena.getRedRelease1());
+        writeLocation(base + ".red-release-2",  arena.getRedRelease2());
+        writeLocation(base + ".blue-release-1", arena.getBlueRelease1());
+        writeLocation(base + ".blue-release-2", arena.getBlueRelease2());
         writeLocation(base + ".pos1",           arena.getPos1());
         writeLocation(base + ".pos2",           arena.getPos2());
         writeSigns(base + ".signs", arena.getSignLocations());

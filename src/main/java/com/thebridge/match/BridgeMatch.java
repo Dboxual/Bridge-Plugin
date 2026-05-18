@@ -6,13 +6,33 @@ import com.thebridge.arena.ArenaState;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
+import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scoreboard.Criteria;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.util.Vector;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class BridgeMatch {
@@ -32,6 +52,23 @@ public class BridgeMatch {
     private final Map<UUID, Long> lastGoalTime = new HashMap<>();
     private static final long GOAL_COOLDOWN_MS = 2000;
 
+    // Players in this set cannot change their XYZ position (rotation still allowed).
+    private final Set<UUID> frozenPlayers = new HashSet<>();
+
+    // Snapshots of the configured release zone blocks, captured at match start.
+    // Restored before each round (so players land on solid ground) then cleared
+    // (set to AIR) after the countdown so players fall naturally into the arena.
+    // Falls back to a 3×3 platform at Y−1 under spawn if no zone is configured.
+    private List<BlockSnapshot> redReleaseSnapshot  = new ArrayList<>();
+    private List<BlockSnapshot> blueReleaseSnapshot = new ArrayList<>();
+
+    // Sidebar scoreboard — assigned to both players for the duration of the match.
+    private Scoreboard scoreboard;
+    private Objective  objective;
+
+    // Immutable snapshot of one block's position and material.
+    private record BlockSnapshot(World world, int x, int y, int z, BlockData data) {}
+
     public BridgeMatch(TheBridgePlugin plugin, Arena arena, UUID redPlayer, UUID bluePlayer) {
         this.plugin = plugin;
         this.arena = arena;
@@ -46,17 +83,33 @@ public class BridgeMatch {
         arena.setState(ArenaState.IN_GAME);
         plugin.getQueueManager().updateSigns(arena);
 
+        captureReleaseZones();
+
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) p.getInventory().clear();
+        }
+
         teleportSafe(redPlayer, arena.getRedSpawn());
         teleportSafe(bluePlayer, arena.getBlueSpawn());
 
-        Player red = Bukkit.getPlayer(redPlayer);
-        Player blue = Bukkit.getPlayer(bluePlayer);
-        if (red != null) red.getInventory().clear();
-        if (blue != null) blue.getInventory().clear();
+        giveLoadout(redPlayer, Team.RED);
+        giveLoadout(bluePlayer, Team.BLUE);
 
-        broadcast(Component.text("Match starting! §cRed§r vs §9Blue§r in arena §e" + arena.getId() + "§r."));
-        startCountdown(() -> state = MatchState.ACTIVE);
+        freezePlayer(redPlayer);
+        freezePlayer(bluePlayer);
+
+        setupScoreboard();
+
+        broadcast(Component.text("§aMatch starting! §cRed §rvs §9Blue §rin arena §e" + arena.getId()));
+        startMatchCountdown(() -> {
+            unfreezePlayer(redPlayer);
+            unfreezePlayer(bluePlayer);
+            state = MatchState.ACTIVE;
+        });
     }
+
+    // ── Scoring ───────────────────────────────────────────────────────────────
 
     public void onGoalEntered(Player player) {
         if (state != MatchState.ACTIVE) return;
@@ -68,92 +121,344 @@ public class BridgeMatch {
         lastGoalTime.put(uid, now);
 
         Location loc = player.getLocation();
+        UUID opponentUid;
+        Team scoringTeam;
 
         if (uid.equals(redPlayer) && arena.isInsideBlueGoal(loc)) {
             redScore++;
-            broadcast(Component.text("§cRed §rscored! §c" + redScore + " §r- §9" + blueScore));
+            opponentUid = bluePlayer;
+            scoringTeam = Team.RED;
         } else if (uid.equals(bluePlayer) && arena.isInsideRedGoal(loc)) {
             blueScore++;
-            broadcast(Component.text("§9Blue §rscored! §c" + redScore + " §r- §9" + blueScore));
+            opponentUid = redPlayer;
+            scoringTeam = Team.BLUE;
         } else {
             return;
         }
+
+        updateScoreboard();
+        broadcastGoal(player, opponentUid, scoringTeam);
 
         if (redScore >= pointsToWin) {
             endMatch(redPlayer);
         } else if (blueScore >= pointsToWin) {
             endMatch(bluePlayer);
         } else {
-            resetAndContinue();
+            softReset();
         }
     }
 
     public void onPlayerDisconnect(UUID uid) {
         if (state == MatchState.ENDED) return;
         UUID winner = uid.equals(redPlayer) ? bluePlayer : redPlayer;
-        broadcast(Component.text("A player left — opponent wins by forfeit."));
+        broadcast(Component.text("§cA player disconnected — opponent wins by forfeit."));
         endMatch(winner);
     }
 
-    private void resetAndContinue() {
+    // ── Soft reset (between rounds) ───────────────────────────────────────────
+    //
+    // No schematic paste. Players are repositioned to spawns, healed, re-given
+    // loadout, frozen for a 3-second countdown, then the configured release zone
+    // blocks are removed so players fall into the arena naturally.
+
+    private void softReset() {
         state = MatchState.RESETTING;
         cancelCountdown();
-        broadcast(Component.text("Resetting arena..."));
 
-        plugin.getSchematicManager().resetArena(arena).whenComplete((v, ex) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (state == MatchState.ENDED) return;
-                    if (ex != null) {
-                        plugin.getLogger().severe("[Bridge] Schematic reset failed mid-match for '" + arena.getId() + "': " + ex.getMessage());
-                    }
-                    teleportSafe(redPlayer, arena.getRedSpawn());
-                    teleportSafe(bluePlayer, arena.getBlueSpawn());
-                    startCountdown(() -> state = MatchState.ACTIVE);
-                })
-        );
+        teleportSafe(redPlayer, arena.getRedSpawn());
+        teleportSafe(bluePlayer, arena.getBlueSpawn());
+
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) clearEffects(p);
+        }
+
+        // Put release zone blocks back so players land on solid ground.
+        restoreReleaseZones();
+
+        giveLoadout(redPlayer, Team.RED);
+        giveLoadout(bluePlayer, Team.BLUE);
+
+        freezePlayer(redPlayer);
+        freezePlayer(bluePlayer);
+
+        startSoftCountdown(() -> {
+            if (state == MatchState.ENDED) return;
+            // Open the gates — players fall into the arena.
+            clearReleaseZones();
+            unfreezePlayer(redPlayer);
+            unfreezePlayer(bluePlayer);
+            state = MatchState.ACTIVE;
+        });
     }
+
+    // ── Match end ─────────────────────────────────────────────────────────────
 
     public void endMatch(UUID winnerUid) {
         if (state == MatchState.ENDED) return;
         state = MatchState.ENDED;
         cancelCountdown();
 
+        unfreezePlayer(redPlayer);
+        unfreezePlayer(bluePlayer);
+
         Player winner = Bukkit.getPlayer(winnerUid);
+        UUID loserUid = winnerUid.equals(redPlayer) ? bluePlayer : redPlayer;
+        Player loser  = Bukkit.getPlayer(loserUid);
+
         String winnerName = winner != null ? winner.getName()
                 : (winnerUid.equals(redPlayer) ? "Red" : "Blue");
-        broadcast(Component.text("§e" + winnerName + " §rwins! Final: §c" + redScore + " §r- §9" + blueScore));
+
+        broadcast(Component.text("§6" + winnerName + " §ewins! Final: §c" + redScore + " §e- §9" + blueScore));
+
+        if (winner != null) {
+            winner.showTitle(Title.title(
+                    Component.text("VICTORY!", NamedTextColor.GOLD, TextDecoration.BOLD),
+                    Component.text("Score: " + redScore + " - " + blueScore, NamedTextColor.WHITE),
+                    Title.Times.times(Duration.ofMillis(300), Duration.ofMillis(3000), Duration.ofMillis(800))
+            ));
+            winner.playSound(winner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
+        }
+        if (loser != null) {
+            loser.showTitle(Title.title(
+                    Component.text("DEFEAT", NamedTextColor.RED, TextDecoration.BOLD),
+                    Component.text(winnerName + " wins " + redScore + " - " + blueScore, NamedTextColor.WHITE),
+                    Title.Times.times(Duration.ofMillis(300), Duration.ofMillis(3000), Duration.ofMillis(800))
+            ));
+            loser.playSound(loser.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.4f, 1.0f);
+        }
 
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
-            if (p != null) {
-                p.getInventory().clear();
-                if (arena.getLobbySpawn() != null) {
-                    teleportSafe(uid, arena.getLobbySpawn());
-                }
-            }
+            if (p == null) continue;
+            p.getInventory().clear();
+            p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+            if (arena.getLobbySpawn() != null) teleportSafe(uid, arena.getLobbySpawn());
         }
 
-        arena.setState(ArenaState.WAITING);
-        plugin.getQueueManager().updateSigns(arena);
+        scoreboard = null;
+        objective  = null;
+        clearArenaEntities();
         plugin.getMatchManager().removeMatch(this);
+
+        // Full schematic reset — FAWE async, then arena returns to WAITING.
+        arena.setState(ArenaState.RESETTING);
+        plugin.getQueueManager().updateSigns(arena);
+
+        plugin.getSchematicManager().resetArena(arena).whenComplete((v, ex) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (ex != null) {
+                        plugin.getLogger().severe("[Bridge] End-of-match reset failed for '"
+                                + arena.getId() + "': " + ex.getMessage());
+                    }
+                    arena.setState(ArenaState.WAITING);
+                    plugin.getQueueManager().updateSigns(arena);
+                })
+        );
     }
 
-    // ── Countdown ─────────────────────────────────────────────────────────────
+    // ── Freeze mechanics ──────────────────────────────────────────────────────
 
-    private void startCountdown(Runnable onFinish) {
+    public void freezePlayer(UUID uid)   { frozenPlayers.add(uid); }
+    public void unfreezePlayer(UUID uid) { frozenPlayers.remove(uid); }
+    public boolean isFrozen(UUID uid)    { return frozenPlayers.contains(uid); }
+
+    // ── Release zone snapshot system ──────────────────────────────────────────
+    //
+    // Snapshots are built once at match start. During each soft reset:
+    //   1. restoreReleaseZones() — re-places the captured blocks so the floor exists.
+    //   2. clearReleaseZones()   — sets them all to AIR so players fall through.
+    //
+    // If a team has no configured release region the 3×3 fallback is used and a
+    // warning is logged so the admin knows to configure the zones.
+
+    private void captureReleaseZones() {
+        if (arena.hasRedRelease()) {
+            redReleaseSnapshot = captureRegion(arena.getRedRelease1(), arena.getRedRelease2());
+        } else {
+            redReleaseSnapshot = captureFloor3x3(arena.getRedSpawn());
+            plugin.getLogger().warning("[Bridge] Arena '" + arena.getId()
+                    + "' has no red release zone — using 3×3 fallback under red spawn. "
+                    + "Run /bridge setredrelease1 and /bridge setredrelease2 to configure it.");
+        }
+        if (arena.hasBlueRelease()) {
+            blueReleaseSnapshot = captureRegion(arena.getBlueRelease1(), arena.getBlueRelease2());
+        } else {
+            blueReleaseSnapshot = captureFloor3x3(arena.getBlueSpawn());
+            plugin.getLogger().warning("[Bridge] Arena '" + arena.getId()
+                    + "' has no blue release zone — using 3×3 fallback under blue spawn. "
+                    + "Run /bridge setbluerelease1 and /bridge setbluerelease2 to configure it.");
+        }
+    }
+
+    private List<BlockSnapshot> captureRegion(Location p1, Location p2) {
+        List<BlockSnapshot> list = new ArrayList<>();
+        if (p1 == null || p2 == null || p1.getWorld() == null) return list;
+        World w = p1.getWorld();
+        int minX = Math.min(p1.getBlockX(), p2.getBlockX()), maxX = Math.max(p1.getBlockX(), p2.getBlockX());
+        int minY = Math.min(p1.getBlockY(), p2.getBlockY()), maxY = Math.max(p1.getBlockY(), p2.getBlockY());
+        int minZ = Math.min(p1.getBlockZ(), p2.getBlockZ()), maxZ = Math.max(p1.getBlockZ(), p2.getBlockZ());
+        for (int x = minX; x <= maxX; x++)
+            for (int y = minY; y <= maxY; y++)
+                for (int z = minZ; z <= maxZ; z++)
+                    list.add(new BlockSnapshot(w, x, y, z, w.getBlockAt(x, y, z).getBlockData().clone()));
+        return list;
+    }
+
+    private List<BlockSnapshot> captureFloor3x3(Location spawn) {
+        List<BlockSnapshot> list = new ArrayList<>();
+        if (spawn == null || spawn.getWorld() == null) return list;
+        World w = spawn.getWorld();
+        int bx = spawn.getBlockX(), by = spawn.getBlockY() - 1, bz = spawn.getBlockZ();
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+                list.add(new BlockSnapshot(w, bx + dx, by, bz + dz,
+                        w.getBlockAt(bx + dx, by, bz + dz).getBlockData().clone()));
+        return list;
+    }
+
+    private void restoreReleaseZones() {
+        restoreSnapshot(redReleaseSnapshot);
+        restoreSnapshot(blueReleaseSnapshot);
+    }
+
+    private void clearReleaseZones() {
+        clearSnapshot(redReleaseSnapshot);
+        clearSnapshot(blueReleaseSnapshot);
+    }
+
+    private void restoreSnapshot(List<BlockSnapshot> snapshots) {
+        for (BlockSnapshot s : snapshots)
+            s.world().getBlockAt(s.x(), s.y(), s.z()).setBlockData(s.data().clone(), false);
+    }
+
+    private void clearSnapshot(List<BlockSnapshot> snapshots) {
+        for (BlockSnapshot s : snapshots)
+            s.world().getBlockAt(s.x(), s.y(), s.z()).setType(Material.AIR, false);
+    }
+
+    // ── Loadout ───────────────────────────────────────────────────────────────
+
+    private void giveLoadout(UUID uid, Team team) {
+        Player p = Bukkit.getPlayer(uid);
+        if (p == null) return;
+        p.getInventory().clear();
+
+        Material blockMat   = team == Team.RED ? Material.RED_TERRACOTTA   : Material.BLUE_TERRACOTTA;
+        Color    armorColor = team == Team.RED ? Color.fromRGB(180, 20, 20) : Color.fromRGB(20, 20, 200);
+
+        p.getInventory().setItem(0, new ItemStack(Material.IRON_SWORD));
+        p.getInventory().setItem(1, new ItemStack(Material.BOW));
+        p.getInventory().setItem(2, new ItemStack(blockMat, 32));
+        p.getInventory().setItem(3, new ItemStack(Material.GOLDEN_APPLE, 3));
+        p.getInventory().setItem(8, new ItemStack(Material.ARROW, 1));
+
+        p.getInventory().setHelmet(dyeArmor(new ItemStack(Material.LEATHER_HELMET),     armorColor));
+        p.getInventory().setChestplate(dyeArmor(new ItemStack(Material.LEATHER_CHESTPLATE), armorColor));
+        p.getInventory().setLeggings(dyeArmor(new ItemStack(Material.LEATHER_LEGGINGS),   armorColor));
+        p.getInventory().setBoots(dyeArmor(new ItemStack(Material.LEATHER_BOOTS),       armorColor));
+
+        p.setHealth(20.0);
+        p.setFoodLevel(20);
+        p.setSaturation(20f);
+    }
+
+    private ItemStack dyeArmor(ItemStack item, Color color) {
+        LeatherArmorMeta meta = (LeatherArmorMeta) item.getItemMeta();
+        meta.setColor(color);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private void clearEffects(Player player) {
+        for (PotionEffect fx : player.getActivePotionEffects()) {
+            player.removePotionEffect(fx.getType());
+        }
+        player.setFireTicks(0);
+        player.setArrowsInBody(0);
+        player.setFreezeTicks(0);
+        player.setVelocity(new Vector(0, 0, 0));
+    }
+
+    // ── Scoreboard ────────────────────────────────────────────────────────────
+
+    private void setupScoreboard() {
+        this.scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+        this.objective  = scoreboard.registerNewObjective("bridge", Criteria.DUMMY,
+                Component.text("The Bridge", NamedTextColor.GOLD, TextDecoration.BOLD));
+        this.objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        updateScoreboard();
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) p.setScoreboard(scoreboard);
+        }
+    }
+
+    private void updateScoreboard() {
+        if (objective == null) return;
+        for (String entry : new ArrayList<>(scoreboard.getEntries())) {
+            scoreboard.resetScores(entry);
+        }
+        Player red  = Bukkit.getPlayer(redPlayer);
+        Player blue = Bukkit.getPlayer(bluePlayer);
+        String redName  = red  != null ? red.getName()  : "Red";
+        String blueName = blue != null ? blue.getName() : "Blue";
+
+        objective.getScore("§7Arena: §e" + arena.getId()).setScore(6);
+        objective.getScore("§8§r").setScore(5);
+        objective.getScore("§c" + redName  + ": §f" + redScore).setScore(4);
+        objective.getScore("§9" + blueName + ": §f" + blueScore).setScore(3);
+        objective.getScore("§8§r ").setScore(2);
+        objective.getScore("§7First to §e" + pointsToWin).setScore(1);
+    }
+
+    // ── Countdowns ────────────────────────────────────────────────────────────
+
+    private void startMatchCountdown(Runnable onFinish) {
         cancelCountdown();
         int seconds = plugin.getConfig().getInt("settings.countdown-seconds", 5);
         int[] tick = {seconds};
 
         countdownTask = new BukkitRunnable() {
-            @Override
-            public void run() {
+            @Override public void run() {
                 if (state == MatchState.ENDED) { cancel(); return; }
                 if (tick[0] > 0) {
-                    sendActionBar(Component.text(tick[0], NamedTextColor.YELLOW, TextDecoration.BOLD));
+                    sendTitle(
+                        Component.text(String.valueOf(tick[0]), NamedTextColor.YELLOW, TextDecoration.BOLD),
+                        Component.text("Match starting...", NamedTextColor.GRAY)
+                    );
+                    sendActionBar(Component.text("Stand by! " + tick[0] + "s", NamedTextColor.YELLOW));
+                    playSound(Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, 1.0f);
                     tick[0]--;
                 } else {
-                    sendActionBar(Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                    sendTitle(Component.text("FIGHT!", NamedTextColor.GREEN, TextDecoration.BOLD), Component.empty());
+                    playSound(Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                    cancel();
+                    countdownTask = null;
+                    onFinish.run();
+                }
+            }
+        };
+        countdownTask.runTaskTimer(plugin, 0L, 20L);
+    }
+
+    private void startSoftCountdown(Runnable onFinish) {
+        cancelCountdown();
+        int[] tick = {3};
+
+        countdownTask = new BukkitRunnable() {
+            @Override public void run() {
+                if (state == MatchState.ENDED) { cancel(); return; }
+                if (tick[0] > 0) {
+                    sendTitle(
+                        Component.text(String.valueOf(tick[0]), NamedTextColor.RED, TextDecoration.BOLD),
+                        Component.text("Next round...", NamedTextColor.GRAY)
+                    );
+                    playSound(Sound.BLOCK_NOTE_BLOCK_HAT, 1.0f, tick[0] == 1 ? 1.4f : 0.9f);
+                    tick[0]--;
+                } else {
+                    sendTitle(Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD), Component.empty());
+                    playSound(Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                     cancel();
                     countdownTask = null;
                     onFinish.run();
@@ -164,15 +469,23 @@ public class BridgeMatch {
     }
 
     private void cancelCountdown() {
-        if (countdownTask != null) {
-            countdownTask.cancel();
-            countdownTask = null;
-        }
+        if (countdownTask != null) { countdownTask.cancel(); countdownTask = null; }
+    }
+
+    // ── Arena cleanup ─────────────────────────────────────────────────────────
+
+    private void clearArenaEntities() {
+        if (!arena.hasRegion()) return;
+        World world = arena.getWorld();
+        if (world == null) return;
+        world.getEntities().stream()
+                .filter(e -> !(e instanceof Player))
+                .filter(e -> arena.isInsideArena(e.getLocation()))
+                .forEach(Entity::remove);
     }
 
     // ── Safe teleport ─────────────────────────────────────────────────────────
 
-    // Marks the teleport as plugin-initiated so MatchListener does not treat it as a forfeit.
     private void teleportSafe(UUID uid, Location loc) {
         if (loc == null) return;
         plugin.getMatchManager().markPluginTeleport(uid);
@@ -181,7 +494,7 @@ public class BridgeMatch {
         Bukkit.getScheduler().runTask(plugin, () -> plugin.getMatchManager().clearPluginTeleport(uid));
     }
 
-    // ── Broadcast helpers ─────────────────────────────────────────────────────
+    // ── Broadcast / title / sound helpers ─────────────────────────────────────
 
     private void broadcast(Component msg) {
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
@@ -197,12 +510,52 @@ public class BridgeMatch {
         }
     }
 
+    private void sendTitle(Component title, Component subtitle) {
+        Title t = Title.title(title, subtitle,
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ZERO));
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) p.showTitle(t);
+        }
+    }
+
+    private void playSound(Sound sound, float volume, float pitch) {
+        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+            Player p = Bukkit.getPlayer(uid);
+            if (p != null) p.playSound(p.getLocation(), sound, volume, pitch);
+        }
+    }
+
+    private void broadcastGoal(Player scorer, UUID opponentUid, Team scoringTeam) {
+        Player opponent = Bukkit.getPlayer(opponentUid);
+        String scoreLine = "§c" + redScore + " §f- §9" + blueScore;
+
+        scorer.showTitle(Title.title(
+                Component.text("GOAL!", scoringTeam.color, TextDecoration.BOLD),
+                Component.text("Score: " + scoreLine, NamedTextColor.WHITE),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(2000), Duration.ofMillis(500))
+        ));
+        scorer.sendMessage(Component.text("§a+1 point! Score: " + scoreLine));
+        scorer.playSound(scorer.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+
+        if (opponent != null) {
+            NamedTextColor oppColor = scoringTeam == Team.RED ? NamedTextColor.RED : NamedTextColor.BLUE;
+            opponent.showTitle(Title.title(
+                    Component.text(scorer.getName() + " scored!", oppColor, TextDecoration.BOLD),
+                    Component.text("Score: " + scoreLine, NamedTextColor.WHITE),
+                    Title.Times.times(Duration.ZERO, Duration.ofMillis(2000), Duration.ofMillis(500))
+            ));
+            opponent.sendMessage(Component.text("§c" + scorer.getName() + " scored! Score: " + scoreLine));
+            opponent.playSound(opponent.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+        }
+    }
+
     // ── Getters ───────────────────────────────────────────────────────────────
 
-    public Arena getArena() { return arena; }
-    public UUID getRedPlayer() { return redPlayer; }
-    public UUID getBluePlayer() { return bluePlayer; }
-    public int getRedScore() { return redScore; }
-    public int getBlueScore() { return blueScore; }
+    public Arena getArena()      { return arena; }
+    public UUID getRedPlayer()   { return redPlayer; }
+    public UUID getBluePlayer()  { return bluePlayer; }
+    public int getRedScore()     { return redScore; }
+    public int getBlueScore()    { return blueScore; }
     public MatchState getState() { return state; }
 }
