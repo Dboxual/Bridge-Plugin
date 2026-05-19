@@ -56,10 +56,6 @@ public class BridgeMatch {
     // Players in this set cannot change their XYZ position (rotation still allowed).
     private final Set<UUID> frozenPlayers = new HashSet<>();
 
-    // Survival inventories saved at match start; restored verbatim when the match ends.
-    // Keyed by player UUID so offline-player data is not lost between ticks.
-    private final Map<UUID, SavedInventory> savedInventories = new HashMap<>();
-
     private BukkitRunnable voidCheckTask = null;
 
     // Snapshots of the configured release zone blocks, captured at match start.
@@ -75,18 +71,6 @@ public class BridgeMatch {
 
     // Immutable snapshot of one block's position and material.
     private record BlockSnapshot(World world, int x, int y, int z, BlockData data) {}
-
-    // Complete snapshot of a player's survival state saved before match start.
-    private record SavedInventory(
-            ItemStack[] contents,    // slots 0-35 (hotbar + storage)
-            ItemStack[] armor,       // [boots, leggings, chestplate, helmet]
-            ItemStack   offhand,
-            int         xpLevel,
-            float       xpProgress,
-            double      health,
-            int         foodLevel,
-            float       saturation
-    ) {}
 
     public BridgeMatch(TheBridgePlugin plugin, Arena arena, UUID redPlayer, UUID bluePlayer) {
         this.plugin = plugin;
@@ -111,47 +95,58 @@ public class BridgeMatch {
                 + "  blue: "
                 + (blueP != null ? blueP.getName() : bluePlayer) + " → " + fmtLoc(arena.getBlueSpawn()));
 
-        // Save survival inventories BEFORE touching anything so we can restore them on match end.
-        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
-            Player p = Bukkit.getPlayer(uid);
-            if (p != null) saveInventory(p);
-        }
-
-        for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
-            Player p = Bukkit.getPlayer(uid);
-            if (p != null) {
-                p.getInventory().clear();
-                debugAdmin("Inventory CLEARED (match start): player=" + p.getName());
-            }
-        }
-
-        teleportSafe(redPlayer, arena.getRedSpawn());
-        teleportSafe(bluePlayer, arena.getBlueSpawn());
-
-        // Defensive re-teleport 1 tick later in case the initial teleport was dropped.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (state == MatchState.ENDED) return;
+        // Teleport to bridge-world lobby first so Multiverse-Inventories can switch per-world
+        // inventories before we clear or assign anything. Loadout and countdown happen 2 ticks
+        // later, by which point Multiverse has replaced the survival inventory with the bridge inventory.
+        Location lobby = arena.getLobbySpawn();
+        if (lobby != null) {
+            teleportSafe(redPlayer, lobby);
+            teleportSafe(bluePlayer, lobby);
+        } else {
             teleportSafe(redPlayer, arena.getRedSpawn());
             teleportSafe(bluePlayer, arena.getBlueSpawn());
-        }, 1L);
+        }
 
-        giveLoadout(redPlayer, Team.RED);
-        giveLoadout(bluePlayer, Team.BLUE);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (state == MatchState.ENDED) return;
 
-        freezePlayer(redPlayer);
-        freezePlayer(bluePlayer);
+            // Safety guard: confirm the world switch completed before touching inventory.
+            World bridgeWorld = arena.getRedSpawn() != null ? arena.getRedSpawn().getWorld() : null;
+            for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
+                Player p = Bukkit.getPlayer(uid);
+                if (p != null && bridgeWorld != null && !p.getWorld().equals(bridgeWorld)) {
+                    debugAdmin("World mismatch after lobby teleport, retrying: " + p.getName());
+                    teleportSafe(uid, uid.equals(redPlayer) ? arena.getRedSpawn() : arena.getBlueSpawn());
+                }
+            }
 
-        setupScoreboard();
-        startVoidCheck();
+            giveLoadout(redPlayer, Team.RED);
+            giveLoadout(bluePlayer, Team.BLUE);
 
-        broadcast(Component.text("§aMatch starting! §cRed §rvs §9Blue §rin arena §e" + arena.getId()));
-        startMatchCountdown(() -> {
-            // Remove floor blocks so players fall into the arena (same as soft-reset countdown end).
-            clearReleaseZones();
-            unfreezePlayer(redPlayer);
-            unfreezePlayer(bluePlayer);
-            state = MatchState.ACTIVE;
-        });
+            teleportSafe(redPlayer, arena.getRedSpawn());
+            teleportSafe(bluePlayer, arena.getBlueSpawn());
+
+            // Defensive re-teleport 1 tick later in case the initial teleport was dropped.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (state == MatchState.ENDED) return;
+                teleportSafe(redPlayer, arena.getRedSpawn());
+                teleportSafe(bluePlayer, arena.getBlueSpawn());
+            }, 1L);
+
+            freezePlayer(redPlayer);
+            freezePlayer(bluePlayer);
+
+            setupScoreboard();
+            startVoidCheck();
+
+            broadcast(Component.text("§aMatch starting! §cRed §rvs §9Blue §rin arena §e" + arena.getId()));
+            startMatchCountdown(() -> {
+                clearReleaseZones();
+                unfreezePlayer(redPlayer);
+                unfreezePlayer(bluePlayer);
+                state = MatchState.ACTIVE;
+            });
+        }, 2L);
     }
 
     // ── Scoring ───────────────────────────────────────────────────────────────
@@ -326,12 +321,14 @@ public class BridgeMatch {
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
             if (p != null) {
+                // Clear game kit while still in bridge_world so Multiverse-Inventories saves
+                // an empty bridge inventory. The survival inventory is restored automatically
+                // by Multiverse on the player's next world switch back to survival_world.
+                p.getInventory().clear();
+                debugAdmin("Inventory CLEARED (game kit removed): player=" + p.getName());
                 p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
                 if (arena.getLobbySpawn() != null) teleportSafe(uid, arena.getLobbySpawn());
             }
-            // Restore survival inventory (clears game kit first, then re-applies saved state).
-            // Safe to call when player is offline — handled internally.
-            restoreInventory(uid);
         }
 
         scoreboard = null;
@@ -730,72 +727,6 @@ public class BridgeMatch {
         plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
                 + " in arena '" + arena.getId() + "'.");
         giveLoadout(uid, team);
-    }
-
-    // ── Survival inventory save / restore ─────────────────────────────────────
-
-    private void saveInventory(Player p) {
-        ItemStack[] contents = cloneItems(p.getInventory().getContents());
-        ItemStack[] armor    = cloneItems(p.getInventory().getArmorContents());
-        ItemStack   offhand  = p.getInventory().getItemInOffHand().clone();
-
-        savedInventories.put(p.getUniqueId(), new SavedInventory(
-                contents, armor, offhand,
-                p.getLevel(), p.getExp(),
-                p.getHealth(), p.getFoodLevel(), p.getSaturation()
-        ));
-        debugAdmin("Inventory SAVED: player=" + p.getName()
-                + " slots=" + countNonEmpty(contents)
-                + " armor=" + countNonEmpty(armor)
-                + " xpLvl=" + p.getLevel());
-    }
-
-    private void restoreInventory(UUID uid) {
-        Player p = Bukkit.getPlayer(uid);
-        SavedInventory snap = savedInventories.remove(uid);
-
-        if (p == null) {
-            // Player is offline — cannot restore now.  Saved data is intentionally
-            // discarded; they will reconnect with whatever the server persists for them.
-            debugAdmin("Inventory RESTORE SKIPPED (offline): uuid=" + uid);
-            return;
-        }
-
-        // Always clear the game kit, even if there is no saved snapshot.
-        p.getInventory().clear();
-        debugAdmin("Inventory CLEARED (game kit removed): player=" + p.getName());
-
-        if (snap == null) {
-            debugAdmin("Inventory RESTORE SKIPPED (no snapshot): player=" + p.getName());
-            return;
-        }
-
-        p.getInventory().setContents(snap.contents());
-        p.getInventory().setArmorContents(snap.armor());
-        p.getInventory().setItemInOffHand(snap.offhand() != null ? snap.offhand() : new ItemStack(Material.AIR));
-        p.setLevel(snap.xpLevel());
-        p.setExp(snap.xpProgress());
-        p.setHealth(Math.min(snap.health(), p.getMaxHealth()));
-        p.setFoodLevel(snap.foodLevel());
-        p.setSaturation(snap.saturation());
-        debugAdmin("Inventory RESTORED: player=" + p.getName()
-                + " slots=" + countNonEmpty(snap.contents())
-                + " armor=" + countNonEmpty(snap.armor())
-                + " xpLvl=" + snap.xpLevel());
-    }
-
-    private static ItemStack[] cloneItems(ItemStack[] src) {
-        ItemStack[] copy = new ItemStack[src.length];
-        for (int i = 0; i < src.length; i++) {
-            copy[i] = (src[i] != null && src[i].getType() != Material.AIR) ? src[i].clone() : null;
-        }
-        return copy;
-    }
-
-    private static int countNonEmpty(ItemStack[] items) {
-        int n = 0;
-        for (ItemStack it : items) if (it != null && it.getType() != Material.AIR) n++;
-        return n;
     }
 
     // ── Admin debug helper ────────────────────────────────────────────────────

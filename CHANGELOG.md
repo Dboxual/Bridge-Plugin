@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.2.9 — 2026-05-18
+### Fixed — Multiverse-Inventories timing: survival inventory no longer wiped on match join
+
+**Root cause:** `BridgeMatch.start()` called `p.getInventory().clear()` and `saveInventory()` while the player was still in `survival_world` (the sign world). Multiverse-Inventories had not yet switched the per-world inventory context, so these operations ran on the survival inventory — corrupting or erasing it. The v1.2.8 `SavedInventory` snapshot mechanism made this worse by snapshotting the wrong world's inventory.
+
+**Fix:**
+- Removed `SavedInventory` record, `savedInventories` map, and all save/restore helper methods from `BridgeMatch`. Multiverse-Inventories manages cross-world inventory persistence automatically — TheBridge must not interfere.
+- `start()` now teleports players to the arena lobby (bridge\_world) **first**, then schedules a 2-tick delayed task. Inside that task, `player.getWorld()` is confirmed to equal the bridge world before `giveLoadout()` clears and assigns kit. This guarantees all inventory operations occur on the bridge-world inventory, never the survival inventory.
+- `endMatch()` calls `p.getInventory().clear()` **before** teleporting to lobby — while the player is still in bridge\_world. Multiverse-Inventories then saves the empty bridge inventory and restores the survival inventory automatically on the next world switch.
+- If no lobby is configured, the initial teleport goes directly to the arena spawn (also bridge\_world), which still triggers the Multiverse world-inventory switch.
+
+**Debug logging:** `Inventory CLEARED (game kit removed)` is now emitted in `endMatch()` for each online player.
+
+---
+
 ## v1.2.8 — 2026-05-18
 ### Fixed — survival inventory preserved across match sessions
 
