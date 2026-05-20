@@ -19,7 +19,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
     BridgeMatch               — single match: countdown, scoring, soft reset, full end-reset, forfeit
   QueueManager                — per-arena player queues; starts match when 2 queued
   WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
-  BridgeCommand               — /bridge admin subcommands + tab completion; setarena uses wand selection to set reset region; removesign unregisters a sign by look-target
+  BridgeCommand               — /bridge admin subcommands + tab completion; enable/disable manage arena open state; setarena uses wand selection to set reset region; removesign unregisters a sign by look-target
   SignListener                — right-click queue sign → join/leave queue
   GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
@@ -55,10 +55,10 @@ Each `Location` stores its own world. There is no global arena world.
 ## ArenaState lifecycle
 
 ```
-DISABLED → WAITING → IN_GAME → RESETTING (FAWE end-of-match) → WAITING (loop)
+DISABLED → (enable) → WAITING → IN_GAME → RESETTING (FAWE end-of-match) → WAITING (loop)
 ```
 
-On startup, arenas that are fully configured and have a saved schematic are set to `WAITING`. Signs are only clickable in `WAITING` state.
+Arenas load from `arenas.yml`. If `enabled: true` is stored, `ArenaStorage.deserializeArena` sets `state = WAITING` immediately on load — the state is not re-derived from configuration completeness or schematic presence. Signs are clickable only in `WAITING` state. `/bridge enable` sets both `enabled = true` and `state = WAITING`; `/bridge disable` sets both to their disabled equivalents and persists to YAML.
 
 ---
 

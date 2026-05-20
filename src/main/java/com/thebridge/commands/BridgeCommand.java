@@ -3,6 +3,7 @@ package com.thebridge.commands;
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.arena.Arena;
 import com.thebridge.arena.ArenaState;
+
 import com.thebridge.match.BridgeMatch;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -69,6 +70,8 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setsign"      -> handleSetSign(sender, args);
             case "removesign"   -> handleRemoveSign(sender, args);
             case "showgoals"    -> handleShowGoals(sender, args);
+            case "enable"       -> handleEnable(sender, args);
+            case "disable"      -> handleDisable(sender, args);
             case "save"         -> handleSave(sender, args);
             case "reset"        -> handleReset(sender, args);
             case "debug"        -> handleDebug(sender, args);
@@ -87,8 +90,9 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getArenaManager().createArena(id);
-        sender.sendMessage(PREFIX + "§aArena '§e" + id + "§a' created. "
-                + "Use §b/bridge wand§a to select goal regions, then §b/bridge set*§a for spawns.");
+        sender.sendMessage(PREFIX + "§aArena '§e" + id + "§a' created and saved.");
+        sender.sendMessage(PREFIX + "§7Next: run §b/bridge set*§7 commands (each auto-saves), "
+                + "then §b/bridge save §e" + id + "§7, then §b/bridge enable §e" + id + "§7.");
     }
 
     private void handleDelete(CommandSender sender, String[] args) {
@@ -109,12 +113,13 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         }
         sender.sendMessage(PREFIX + "§eArenas §7(" + all.size() + ")§e:");
         for (Arena arena : all) {
+            String enabled    = arena.isEnabled() ? "§aenabled" : "§7disabled";
             String configured = arena.isFullyConfigured() ? "§aconfigured" : "§cincomplete";
             String schematic  = plugin.getSchematicManager().hasSchematic(arena) ? "§aschematic" : "§7no schematic";
             String goals      = arena.hasRedGoal() && arena.hasBlueGoal() ? "§agoals" : "§cno goals";
             String release    = arena.hasRedRelease() && arena.hasBlueRelease() ? "§arelease" : "§eno release";
             sender.sendMessage("  §7• §f" + arena.getId()
-                    + " §8[" + configured + "§8] [" + schematic + "§8] [" + goals + "§8] [" + release + "§8]");
+                    + " §8[" + enabled + "§8] [" + configured + "§8] [" + schematic + "§8] [" + goals + "§8] [" + release + "§8]");
         }
     }
 
@@ -226,6 +231,40 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     + "§r: §7(" + fmtBlock(p1) + ")§r → §7(" + fmtBlock(p2) + ")§r.");
         }
         plugin.getArenaManager().saveArena(arena);
+    }
+
+    private void handleEnable(CommandSender sender, String[] args) {
+        if (args.length < 2) { usage(sender, "enable <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+        if (arena.isEnabled()) {
+            sender.sendMessage(PREFIX + "§eArena '§b" + arena.getId() + "§e' is already enabled.");
+            return;
+        }
+        arena.setEnabled(true);
+        arena.setState(ArenaState.WAITING);
+        plugin.getArenaManager().saveArena(arena);
+        plugin.getQueueManager().updateSigns(arena);
+        sender.sendMessage(PREFIX + "§aArena '§e" + arena.getId() + "§a' enabled. Players can now queue via sign.");
+    }
+
+    private void handleDisable(CommandSender sender, String[] args) {
+        if (args.length < 2) { usage(sender, "disable <arena>"); return; }
+        Arena arena = resolveArena(sender, args[1]);
+        if (arena == null) return;
+        if (!arena.isEnabled()) {
+            sender.sendMessage(PREFIX + "§eArena '§b" + arena.getId() + "§e' is already disabled.");
+            return;
+        }
+        if (arena.getState() == ArenaState.IN_GAME || arena.getState() == ArenaState.RESETTING) {
+            sender.sendMessage(PREFIX + "§cCannot disable '§e" + arena.getId() + "§c' while a match is in progress.");
+            return;
+        }
+        arena.setEnabled(false);
+        arena.setState(ArenaState.DISABLED);
+        plugin.getArenaManager().saveArena(arena);
+        plugin.getQueueManager().updateSigns(arena);
+        sender.sendMessage(PREFIX + "§aArena '§e" + arena.getId() + "§a' disabled.");
     }
 
     private void handleSetArena(CommandSender sender, String[] args) {
@@ -559,6 +598,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             return filter(List.of("create", "delete", "list",
+                    "enable", "disable",
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setredrelease", "setbluerelease",
@@ -596,28 +636,32 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
 
     private void sendUsage(CommandSender sender) {
         sender.sendMessage(PREFIX + "§eTheBridge — admin commands:");
-        sender.sendMessage("  §b/bridge create §f<arena>         §7Create a new arena");
-        sender.sendMessage("  §b/bridge delete §f<arena>         §7Delete an arena");
-        sender.sendMessage("  §b/bridge list                    §7List all arenas");
-        sender.sendMessage("  §b/bridge setredspawn §f<arena>    §7Set red spawn at your location");
-        sender.sendMessage("  §b/bridge setbluespawn §f<arena>   §7Set blue spawn at your location");
-        sender.sendMessage("  §b/bridge setlobby §f<arena>       §7Set lobby/waiting spawn");
-        sender.sendMessage("  §b/bridge wand                    §7Get the goal-region selection wand");
-        sender.sendMessage("  §b/bridge selection               §7Show current wand selection (pos1/pos2/size)");
-        sender.sendMessage("  §b/bridge setredgoal §f<arena>        §7Set red goal region (wand selection)");
-        sender.sendMessage("  §b/bridge setbluegoal §f<arena>       §7Set blue goal region (wand selection)");
-        sender.sendMessage("  §b/bridge showgoals §f<arena>         §7Show goal regions with particles (10s)");
-        sender.sendMessage("  §b/bridge setredrelease §f<arena>        §7Set red release zone from wand selection");
-        sender.sendMessage("  §b/bridge setbluerelease §f<arena>       §7Set blue release zone from wand selection");
-        sender.sendMessage("  §b/bridge setarena §f<arena>             §7Set reset region from wand selection §a(recommended)");
-        sender.sendMessage("  §b/bridge setvoidlevel §f<arena>         §7Set void Y level at your current position");
-        sender.sendMessage("  §b/bridge setpos1 §f<arena>              §7Set reset region corner 1 §7(legacy)");
-        sender.sendMessage("  §b/bridge setpos2 §f<arena>              §7Set reset region corner 2 §7(legacy)");
-        sender.sendMessage("  §b/bridge setsign §f<arena>        §7Register the sign you're looking at");
-        sender.sendMessage("  §b/bridge removesign §f<arena>     §7Unregister the sign you're looking at");
-        sender.sendMessage("  §b/bridge save §f<arena>           §7Save arena region as schematic");
-        sender.sendMessage("  §b/bridge reset §f<arena>          §7Restore arena from schematic");
-        sender.sendMessage("  §b/bridge debug §f<arena>          §7Dump full arena/match status");
+        sender.sendMessage("§7── Setup flow ──────────────────────────────");
+        sender.sendMessage("  §b/bridge create §f<arena>              §7Create arena (auto-saved; setup commands work immediately)");
+        sender.sendMessage("  §b/bridge setlobby §f<arena>            §7Set lobby spawn at your location");
+        sender.sendMessage("  §b/bridge setredspawn §f<arena>         §7Set red spawn at your location");
+        sender.sendMessage("  §b/bridge setbluespawn §f<arena>        §7Set blue spawn at your location");
+        sender.sendMessage("  §b/bridge wand                         §7Get the Bridge wand (left-click=pos1, right-click=pos2)");
+        sender.sendMessage("  §b/bridge setredgoal §f<arena>          §7Set red goal region from wand selection");
+        sender.sendMessage("  §b/bridge setbluegoal §f<arena>         §7Set blue goal region from wand selection");
+        sender.sendMessage("  §b/bridge setredrelease §f<arena>       §7Set red release zone from wand selection");
+        sender.sendMessage("  §b/bridge setbluerelease §f<arena>      §7Set blue release zone from wand selection");
+        sender.sendMessage("  §b/bridge setarena §f<arena>            §7Set full reset region from wand selection");
+        sender.sendMessage("  §b/bridge setvoidlevel §f<arena>        §7Set void Y level at your current position");
+        sender.sendMessage("  §b/bridge save §f<arena>                §7Snapshot reset region as schematic (required before enable)");
+        sender.sendMessage("  §b/bridge setsign §f<arena>             §7Register the sign you're looking at");
+        sender.sendMessage("  §b/bridge enable §f<arena>              §7Open arena to players");
+        sender.sendMessage("§7── Management ─────────────────────────────");
+        sender.sendMessage("  §b/bridge disable §f<arena>             §7Close arena to players");
+        sender.sendMessage("  §b/bridge list                         §7List all arenas with status");
+        sender.sendMessage("  §b/bridge delete §f<arena>              §7Delete an arena");
+        sender.sendMessage("  §b/bridge reset §f<arena>               §7Restore arena from schematic");
+        sender.sendMessage("  §b/bridge showgoals §f<arena>           §7Show goal regions with particles (10s)");
+        sender.sendMessage("  §b/bridge removesign §f<arena>          §7Unregister the sign you're looking at");
+        sender.sendMessage("  §b/bridge selection                    §7Show current wand selection");
+        sender.sendMessage("  §b/bridge debug §f<arena>               §7Dump full arena/match status");
+        sender.sendMessage("  §b/bridge setpos1 §f<arena>             §7Set reset region corner 1 (legacy)");
+        sender.sendMessage("  §b/bridge setpos2 §f<arena>             §7Set reset region corner 2 (legacy)");
     }
 
     private String fmtBlock(Location loc) {

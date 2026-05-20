@@ -105,6 +105,7 @@ public class ArenaStorage {
         arena.setPos2(readLocation(s, "pos2"));
         if (s.contains("void-level")) arena.setVoidLevel(s.getInt("void-level"));
         arena.setSignLocations(readSigns(s));
+        if (arena.isEnabled()) arena.setState(ArenaState.WAITING);
         return arena;
     }
 

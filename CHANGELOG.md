@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.3.4 — 2026-05-20
+### Added — `/bridge enable` and `/bridge disable`; arena setup flow improvements
+
+**`/bridge enable <arena>`**
+- Sets `arena.enabled = true`, transitions state to `WAITING`, persists to `arenas.yml`, and refreshes queue signs.
+- Admins no longer need to manually edit config to open an arena.
+
+**`/bridge disable <arena>`**
+- Sets `arena.enabled = false`, transitions state to `DISABLED`, persists, refreshes signs.
+- Blocked if a match is currently in progress (`IN_GAME` or `RESETTING`).
+
+**ArenaStorage bug fix** (`ArenaStorage.deserializeArena`)
+- Previously, `enabled: true` was loaded from YAML but the arena's runtime state always started as `DISABLED` (from the constructor), so arenas had to be manually re-enabled after every restart.
+- Fix: `deserializeArena` now sets `arena.setState(ArenaState.WAITING)` when `enabled = true`, restoring the correct state on load.
+
+**`/bridge create` message**
+- Now tells the admin that all `set*` commands auto-save and that the flow ends with `/bridge save` then `/bridge enable`.
+
+**`/bridge list`**
+- Now shows `[enabled]` / `[disabled]` as the first status tag per arena.
+
+**`/bridge` help text**
+- Rewritten to show the full setup flow in order, followed by a management section with enable/disable.
+
+---
+
 ## v1.3.3 — 2026-05-19
 ### Fixed — post-reset invulnerability / respawn protection
 

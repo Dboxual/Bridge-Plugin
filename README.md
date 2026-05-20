@@ -52,12 +52,14 @@ The plugin **will not load** unless FAWE is installed on the server.
 
 | Command | Description |
 |---|---|
-| `/bridge create <arena>` | Create a new arena |
+| `/bridge create <arena>` | Create a new arena (auto-saved; setup commands work immediately) |
 | `/bridge delete <arena>` | Delete an arena |
-| `/bridge list` | List all arenas with status |
+| `/bridge list` | List all arenas with enabled/configured/schematic status |
+| `/bridge enable <arena>` | Open arena to players |
+| `/bridge disable <arena>` | Close arena to players (blocked during active matches) |
+| `/bridge setlobby <arena>` | Set lobby/waiting spawn at your location |
 | `/bridge setredspawn <arena>` | Set red team spawn at your location |
 | `/bridge setbluespawn <arena>` | Set blue team spawn at your location |
-| `/bridge setlobby <arena>` | Set lobby/waiting spawn at your location |
 | `/bridge wand` | Get the Bridge Setup Wand (left-click block=pos1, right-click block=pos2) |
 | `/bridge selection` | Show current wand selection: pos1, pos2, world, dimensions |
 | `/bridge setredgoal <arena>` | Set red goal region from wand selection |
@@ -65,42 +67,40 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge showgoals <arena>` | Visualise goal regions with particles for 10 s |
 | `/bridge setredrelease <arena>` | Set red release zone from wand selection |
 | `/bridge setbluerelease <arena>` | Set blue release zone from wand selection |
+| `/bridge setarena <arena>` | Set full reset region from wand selection |
 | `/bridge setvoidlevel <arena>` | Set void Y level at your current position |
-| `/bridge debug <arena>` | Dump full arena and match status |
-| `/bridge setarena <arena>` | Set reset region from wand selection (recommended) |
-| `/bridge setpos1 <arena>` | Set reset region corner 1 at your location (legacy) |
-| `/bridge setpos2 <arena>` | Set reset region corner 2 at your location (legacy) |
+| `/bridge save <arena>` | Snapshot the reset region as a schematic (required before enable) |
 | `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
 | `/bridge removesign <arena>` | Unregister the sign you are looking at (clears text, keeps block) |
-| `/bridge save <arena>` | Save the arena region as a schematic |
 | `/bridge reset <arena>` | Restore the arena from its saved schematic |
+| `/bridge debug <arena>` | Dump full arena and match status |
+| `/bridge setpos1 <arena>` | Set reset region corner 1 at your location (legacy) |
+| `/bridge setpos2 <arena>` | Set reset region corner 2 at your location (legacy) |
 
 ---
 
 ## Arena setup flow
 
-1. `/bridge create <arena>` — create the arena entry.
-2. Stand at each spawn and run the corresponding `set*` command. The world is detected automatically.
-3. **Goal regions:** run `/bridge wand` to receive the wand.
-   - **Left-click** a block → pos1 set.
-   - **Right-click** a block → pos2 set.
-   - When both corners are selected, lime-green particles outline the cuboid.
-   - Run `/bridge selection` to inspect dimensions and verify the selection.
-   - Run `/bridge setredgoal <arena>` — saves the wand selection as the red goal region.
-   - Repeat with `/bridge setbluegoal <arena>` for blue.
-   - Use `/bridge showgoals <arena>` to overlay goal regions with red/blue particles.
-4. **Release zones:** use `/bridge wand` to select the floor region that should open each round.
-   - Left-click corner 1, right-click corner 2.
-   - `/bridge setredrelease <arena>` — saves the wand selection as red's release zone.
-   - Repeat the wand selection, then `/bridge setbluerelease <arena>` for blue.
-   - If not configured, a 3×3 fallback at Y−1 under each spawn is used (a console warning is logged).
-5. **Reset region:** use `/bridge wand` to select the full arena region (all blocks that will be restored at match end).
-   - Left-click corner 1, right-click corner 2.
-   - `/bridge setarena <arena>` — saves the wand selection as the reset region.
-   - *(Legacy alternative: stand at each corner and run `/bridge setpos1 <arena>` then `/bridge setpos2 <arena>`)*
-6. `/bridge save <arena>` — snapshot the region as a schematic.
-7. Place a sign, look at it, `/bridge setsign <arena>` — sign updates automatically.
-8. Players right-click the sign to join. Two players → match starts.
+All `set*` commands auto-save to `arenas.yml` immediately. No manual config editing is required.
+
+1. `/bridge create <arena>` — register the arena.
+2. `/bridge setlobby <arena>` — stand at the lobby and run.
+3. `/bridge setredspawn <arena>` — stand at red spawn and run.
+4. `/bridge setbluespawn <arena>` — stand at blue spawn and run.
+5. **Wand-based regions:** run `/bridge wand` to receive the setup wand.
+   - **Left-click** a block → pos1. **Right-click** a block → pos2.
+   - `/bridge setredgoal <arena>` — saves wand selection as red goal.
+   - `/bridge setbluegoal <arena>` — saves wand selection as blue goal.
+   - `/bridge setredrelease <arena>` — saves wand selection as red release zone.
+   - `/bridge setbluerelease <arena>` — saves wand selection as blue release zone.
+   - `/bridge setarena <arena>` — saves wand selection as the full reset region (required for save).
+   - Use `/bridge showgoals <arena>` to verify goal placement with particles.
+6. `/bridge setvoidlevel <arena>` — stand at the void threshold and run (optional but recommended).
+7. `/bridge save <arena>` — snapshot the reset region as a schematic.
+8. Place a sign, look at it, `/bridge setsign <arena>` — registers it as a queue sign.
+9. `/bridge enable <arena>` — opens the arena to players. Players right-click the sign to queue.
+
+To take an arena offline: `/bridge disable <arena>`. To reopen: `/bridge enable <arena>`. The enabled state persists across server restarts.
 
 ### Release zone requirement
 
