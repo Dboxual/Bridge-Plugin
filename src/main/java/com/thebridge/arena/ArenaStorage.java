@@ -51,7 +51,7 @@ public class ArenaStorage {
         reload();
     }
 
-    private void reload() {
+    void reload() {
         if (!file.exists()) {
             try {
                 file.getParentFile().mkdirs();

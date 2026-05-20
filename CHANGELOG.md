@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.5 — 2026-05-20
+### Added — `/bridge reload`
+
+- Reloads `config.yml` (points-to-win, countdown-seconds, debug, schematics-folder) and all arena data from `arenas.yml` without a server restart.
+- Rebuilds the in-memory arena registry: spawns, lobby, goal regions, release zones, void level, signs, schematic name, and enabled state are all refreshed from disk.
+- Enabled state persists across reload — arenas saved as `enabled: true` come back as `WAITING`; arenas saved as `enabled: false` stay `DISABLED`.
+- Queue signs are refreshed for all reloaded arenas.
+- **Blocked if any match is active** — prints the number of active matches and tells the admin to wait. No partial reload occurs.
+- Logs the reload to console with the invoking sender's name and arena count.
+- Added to tab completion and help text.
+
+---
+
 ## v1.3.4 — 2026-05-20
 ### Added — `/bridge enable` and `/bridge disable`; arena setup flow improvements
 

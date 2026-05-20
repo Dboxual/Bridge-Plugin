@@ -72,6 +72,7 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge save <arena>` | Snapshot the reset region as a schematic (required before enable) |
 | `/bridge setsign <arena>` | Register the sign you are looking at as a queue sign |
 | `/bridge removesign <arena>` | Unregister the sign you are looking at (clears text, keeps block) |
+| `/bridge reload` | Reload config and all arena data from disk (blocked during active matches) |
 | `/bridge reset <arena>` | Restore the arena from its saved schematic |
 | `/bridge debug <arena>` | Dump full arena and match status |
 | `/bridge setpos1 <arena>` | Set reset region corner 1 at your location (legacy) |

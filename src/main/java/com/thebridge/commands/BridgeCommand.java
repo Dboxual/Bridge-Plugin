@@ -70,6 +70,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setsign"      -> handleSetSign(sender, args);
             case "removesign"   -> handleRemoveSign(sender, args);
             case "showgoals"    -> handleShowGoals(sender, args);
+            case "reload"       -> handleReload(sender);
             case "enable"       -> handleEnable(sender, args);
             case "disable"      -> handleDisable(sender, args);
             case "save"         -> handleSave(sender, args);
@@ -231,6 +232,24 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     + "§r: §7(" + fmtBlock(p1) + ")§r → §7(" + fmtBlock(p2) + ")§r.");
         }
         plugin.getArenaManager().saveArena(arena);
+    }
+
+    private void handleReload(CommandSender sender) {
+        Collection<BridgeMatch> active = plugin.getMatchManager().getActiveMatches();
+        if (!active.isEmpty()) {
+            int n = active.size();
+            sender.sendMessage(PREFIX + "§cReload blocked — §e" + n + " §cactive match"
+                    + (n == 1 ? "" : "es") + " in progress. "
+                    + "Wait for " + (n == 1 ? "it" : "them") + " to finish and try again.");
+            return;
+        }
+        plugin.reloadConfig();
+        plugin.getArenaManager().reloadAll();
+        plugin.getQueueManager().updateAllSigns();
+        int count = plugin.getArenaManager().getAllArenas().size();
+        plugin.getLogger().info("[Bridge] Config and arenas reloaded by " + sender.getName()
+                + " — " + count + " arena(s) loaded.");
+        sender.sendMessage(PREFIX + "§aReloaded. §7(" + count + " arena(s) loaded.)");
     }
 
     private void handleEnable(CommandSender sender, String[] args) {
@@ -598,7 +617,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             return filter(List.of("create", "delete", "list",
-                    "enable", "disable",
+                    "reload", "enable", "disable",
                     "setredspawn", "setbluespawn", "setlobby",
                     "setredgoal", "setbluegoal",
                     "setredrelease", "setbluerelease",
@@ -607,8 +626,9 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "wand", "selection", "setsign", "removesign", "showgoals",
                     "save", "reset", "debug"), args[0]);
         }
-        // wand and selection take no second argument
+        // commands that take no second argument
         if (args.length == 2 && !args[0].equalsIgnoreCase("list")
+                && !args[0].equalsIgnoreCase("reload")
                 && !args[0].equalsIgnoreCase("wand")
                 && !args[0].equalsIgnoreCase("selection")) {
             return plugin.getArenaManager().getAllArenas().stream()
@@ -652,6 +672,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setsign §f<arena>             §7Register the sign you're looking at");
         sender.sendMessage("  §b/bridge enable §f<arena>              §7Open arena to players");
         sender.sendMessage("§7── Management ─────────────────────────────");
+        sender.sendMessage("  §b/bridge reload                        §7Reload config and all arena data from disk");
         sender.sendMessage("  §b/bridge disable §f<arena>             §7Close arena to players");
         sender.sendMessage("  §b/bridge list                         §7List all arenas with status");
         sender.sendMessage("  §b/bridge delete §f<arena>              §7Delete an arena");

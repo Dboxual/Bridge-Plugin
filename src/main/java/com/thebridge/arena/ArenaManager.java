@@ -34,6 +34,11 @@ public class ArenaManager {
         plugin.getLogger().info("Loaded " + arenas.size() + " arena(s).");
     }
 
+    public void reloadAll() {
+        storage.reload();
+        loadAll();
+    }
+
     // ── CRUD ──────────────────────────────────────────────────────────────────
 
     /**
