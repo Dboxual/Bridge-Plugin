@@ -60,9 +60,12 @@ public class BridgeMatch {
 
     private BukkitRunnable voidCheckTask = null;
 
-    // Pending arrow-regen tasks keyed by player UUID.  Cancelled whenever a fresh
-    // loadout is given (the kit includes 1 arrow) and at match end.
+    // Pending arrow-regen tasks keyed by player UUID.  Each task updates the XP bar
+    // every tick as a countdown timer, then gives back 1 arrow after 70 ticks (3.5 s).
+    // Cancelled whenever a fresh loadout is given (kit already includes 1 arrow).
     private final Map<UUID, BukkitRunnable> arrowRegenTasks = new HashMap<>();
+    private final Map<UUID, Integer>        savedXpLevels   = new HashMap<>();
+    private final Map<UUID, Float>          savedXpProgress = new HashMap<>();
 
     // Snapshots of the configured release zone blocks, captured at match start.
     // Restored before each round (so players land on solid ground) then cleared
@@ -745,33 +748,73 @@ public class BridgeMatch {
         giveLoadout(uid, team);
     }
 
-    // ── Arrow regeneration ────────────────────────────────────────────────────
+    // ── Arrow regeneration + XP bar countdown ────────────────────────────────
+    //
+    // A single repeating task (1-tick period) handles both concerns:
+    //   • XP bar drains from 1.0 → ~0.0 over 70 ticks as a visual timer.
+    //   • After 70 ticks the arrow is given back and the real XP is restored.
+    // Cancelling the task at any point (loadout refresh, pickup, match end)
+    // also restores the player's real XP level and progress.
 
     public void scheduleArrowRegen(UUID uid) {
-        cancelArrowRegen(uid);
+        cancelArrowRegen(uid); // cancel previous timer and restore XP bar
+
+        Player starter = Bukkit.getPlayer(uid);
+        if (starter != null) {
+            savedXpLevels.put(uid, starter.getLevel());
+            savedXpProgress.put(uid, starter.getExp());
+            starter.setLevel(0);
+            starter.setExp(1.0f); // full bar = arrow just shot, countdown begins
+        }
+
+        final int[] ticksLeft = {70};
         BukkitRunnable task = new BukkitRunnable() {
             @Override public void run() {
-                arrowRegenTasks.remove(uid);
-                if (state == MatchState.ENDED) return;
+                if (state == MatchState.ENDED) {
+                    cancel(); arrowRegenTasks.remove(uid); restoreXpBar(uid); return;
+                }
                 Player p = Bukkit.getPlayer(uid);
-                if (p == null || !p.isOnline()) return;
-                if (p.getInventory().contains(Material.ARROW)) return;
-                p.getInventory().addItem(new ItemStack(Material.ARROW, 1));
-                debugAdmin("Arrow REGEN: player=" + p.getName());
+                if (p == null) {
+                    cancel(); arrowRegenTasks.remove(uid); restoreXpBar(uid); return;
+                }
+
+                ticksLeft[0]--;
+                if (ticksLeft[0] > 0) {
+                    p.setExp(ticksLeft[0] / 70.0f);
+                    return;
+                }
+
+                // 70 ticks elapsed — give arrow back and restore XP bar.
+                cancel();
+                arrowRegenTasks.remove(uid);
+                if (!p.getInventory().contains(Material.ARROW)) {
+                    p.getInventory().addItem(new ItemStack(Material.ARROW, 1));
+                    debugAdmin("Arrow REGEN: player=" + p.getName());
+                }
+                restoreXpBar(uid);
             }
         };
         arrowRegenTasks.put(uid, task);
-        task.runTaskLater(plugin, 70L); // 3.5 s at 20 TPS
+        task.runTaskTimer(plugin, 1L, 1L);
     }
 
     public void cancelArrowRegen(UUID uid) {
         BukkitRunnable existing = arrowRegenTasks.remove(uid);
-        if (existing != null) existing.cancel();
+        if (existing != null) { existing.cancel(); restoreXpBar(uid); }
     }
 
     private void cancelAllArrowRegens() {
-        arrowRegenTasks.values().forEach(BukkitRunnable::cancel);
-        arrowRegenTasks.clear();
+        List<UUID> pending = new ArrayList<>(arrowRegenTasks.keySet());
+        for (UUID uid : pending) cancelArrowRegen(uid);
+    }
+
+    private void restoreXpBar(UUID uid) {
+        Integer level = savedXpLevels.remove(uid);
+        Float   exp   = savedXpProgress.remove(uid);
+        Player p = Bukkit.getPlayer(uid);
+        if (p == null) return;
+        p.setLevel(level != null ? level : 0);
+        p.setExp(exp   != null ? exp   : 0.0f);
     }
 
     // ── Admin debug helper ────────────────────────────────────────────────────

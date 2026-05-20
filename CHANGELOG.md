@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.3.2 — 2026-05-19
+### Added — XP bar arrow-regen countdown timer
+
+The arrow regen system now drives the XP bar as a visual countdown:
+- When a player shoots their arrow, the XP bar immediately fills to 1.0 (full) and drains smoothly to 0 over 70 ticks (3.5 s) as the regen counts down.
+- When the arrow returns, the XP bar is restored to the player's real XP level and progress.
+- **Single combined task:** the previous `runTaskLater(70L)` is replaced by a `runTaskTimer(1L, 1L)` that decrements `exp` by `1/70` each tick (`p.setExp(ticksLeft / 70.0f)`), then gives the arrow and restores XP on tick 70.
+- Player's real XP (`level` + `exp`) is saved to `savedXpLevels` / `savedXpProgress` on timer start and restored on any cancellation path: `cancelArrowRegen` (loadout refresh, arrow pickup), `cancelAllArrowRegens` (match end), or natural timer completion.
+- XP is **not** touched outside Bridge matches.
+
+---
+
 ## v1.3.1 — 2026-05-19
 ### Fixed — golden apple effects not applying; arrow pickup blocked for players with 0 arrows
 
