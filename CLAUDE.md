@@ -150,6 +150,17 @@ The schematic reset at match end restores them permanently via FAWE.
 
 Commands: `/bridge setredrelease <arena>` and `/bridge setbluerelease <arena>` — use the Bridge wand to select the region (same flow as `/bridge setredgoal`), then run the command. Stored in `Arena` as `redRelease1/2`, `blueRelease1/2`. Persisted in `arenas.yml` under `red-release-1/2`, `blue-release-1/2`.
 
+## Permissions
+
+| Permission | Default | Purpose |
+|---|---|---|
+| `bridge.admin` | op | All admin commands (`/bridge create`, `setsign`, `removesign`, etc.). Inherits `bridge.play`. |
+| `bridge.play` | true | Click queue signs to join/leave matches. |
+
+`SignListener.onInteract` runs at `EventPriority.HIGH` to fire after protection plugins (e.g. WorldGuard) and still cancel the event correctly in protected regions.
+
+---
+
 ## Freeze mechanic
 
 `BridgeMatch` maintains a `frozenPlayers: Set<UUID>`. While a UUID is in this set, `GoalListener.onMove` redirects any XYZ change back to `event.getFrom()` (preserving yaw/pitch). Gravity still applies — only voluntary movement is blocked. The freeze is used during both the match-start countdown and the soft-reset countdown.

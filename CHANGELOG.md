@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.3.6 — 2026-05-20
+### Fixed — Sign join permissions and instant-forfeit on cross-world join
+
+**Sign permissions (`SignListener`)**
+- Added `bridge.play` permission (default: `true`) for queue sign usage. Regular players no longer need `bridge.admin` to join matches.
+- Admin permission (`bridge.admin`) is still required for setup commands (`/bridge setsign`, `/bridge removesign`, etc.).
+- `bridge.admin` now inherits `bridge.play` so ops can use signs without extra config.
+- `SignListener.onInteract` elevated to `EventPriority.HIGH` so it fires after protection plugins (e.g. WorldGuard) and can cancel correctly in protected regions.
+
+**Instant forfeit on cross-world sign join (`MatchListener`)**
+- `onWorldChange`: no longer calls `handle()` when the player's new world matches the arena world — arriving in the arena world is a join, not a leave.
+- `onTeleport`: now returns early if the match is not in `ACTIVE` state. Previously it fired during `COUNTDOWN` when the lobby location was outside the arena region, triggering an immediate forfeit before the match even started.
+
+---
+
 ## v1.3.5 — 2026-05-20
 ### Added — `/bridge reload`
 

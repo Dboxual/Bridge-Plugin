@@ -3,7 +3,9 @@ package com.thebridge.listeners;
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.arena.Arena;
 import com.thebridge.match.BridgeMatch;
+import com.thebridge.match.MatchState;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -32,7 +34,18 @@ public class MatchListener implements Listener {
     @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
-        if (plugin.getMatchManager().isPluginTeleporting(player.getUniqueId())) return;
+        UUID uid = player.getUniqueId();
+
+        if (plugin.getMatchManager().isPluginTeleporting(uid)) return;
+
+        // If the player just arrived in the arena's world they are joining, not leaving.
+        BridgeMatch match = plugin.getMatchManager().getMatch(player);
+        if (match != null) {
+            Arena arena = match.getArena();
+            World arenaWorld = arena.getPos1() != null ? arena.getPos1().getWorld() : null;
+            if (arenaWorld != null && arenaWorld.equals(player.getWorld())) return;
+        }
+
         handle(player);
     }
 
@@ -48,6 +61,9 @@ public class MatchListener implements Listener {
 
         BridgeMatch match = plugin.getMatchManager().getMatch(player);
         if (match == null) return;
+
+        // Only forfeit on teleport during active play — not during countdowns or end sequences.
+        if (match.getState() != MatchState.ACTIVE) return;
 
         Location to = event.getTo();
         if (to == null) return;

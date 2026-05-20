@@ -8,6 +8,7 @@ import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -21,7 +22,7 @@ public class SignListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
         if (event.getHand() != EquipmentSlot.HAND) return;
@@ -50,6 +51,10 @@ public class SignListener implements Listener {
     }
 
     private void handleSignClick(Player player, Arena arena) {
+        if (!player.hasPermission("bridge.play")) {
+            player.sendMessage(Component.text("§cYou don't have permission to join Bridge matches."));
+            return;
+        }
         if (!arena.isFullyConfigured()) {
             player.sendMessage(Component.text("§cThis arena is not fully configured yet."));
             return;
