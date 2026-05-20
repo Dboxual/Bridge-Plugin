@@ -514,6 +514,8 @@ public class BridgeMatch {
         player.setFireTicks(0);
         player.setArrowsInBody(0);
         player.setFreezeTicks(0);
+        player.setNoDamageTicks(0);
+        player.setAbsorptionAmount(0.0);
         player.setVelocity(new Vector(0, 0, 0));
     }
 
@@ -746,6 +748,7 @@ public class BridgeMatch {
         plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
                 + " in arena '" + arena.getId() + "'.");
         giveLoadout(uid, team);
+        p.setNoDamageTicks(0);
     }
 
     // ── Arrow regeneration + XP bar countdown ────────────────────────────────

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.3 — 2026-05-19
+### Fixed — post-reset invulnerability / respawn protection
+
+- **Root cause:** vanilla `NoDamageTicks` was never cleared after a player died and respawned in-match (60-tick window, ~3 s). Because the soft-reset countdown also runs for 3 s, the invulnerability could still be active when the countdown ended and players were released — preventing them from attacking or being attacked.
+- `clearEffects()` now calls `player.setNoDamageTicks(0)` and `player.setAbsorptionAmount(0.0)`. This covers the `softReset` path (goal scored) and the void-fall path.
+- `respawnPlayer()` now calls `p.setNoDamageTicks(0)` after giving the loadout. This covers the natural death → respawn path.
+- Leftover absorption hearts from golden apples used in the previous round are also cleared by `clearEffects`, so players always start fresh with exactly 20 HP and no absorption.
+
+---
+
 ## v1.3.2 — 2026-05-19
 ### Added — XP bar arrow-regen countdown timer
 
