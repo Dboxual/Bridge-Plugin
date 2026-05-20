@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.1 — 2026-05-19
+### Fixed — golden apple effects not applying; arrow pickup blocked for players with 0 arrows
+
+**Golden apple fix (`BridgeKitListener.onConsume`):**
+- Root cause: the event was cancelled (preventing vanilla item consumption) AND the apple was manually removed. In Paper 1.21 `getItemInMainHand()` returns the actual stack reference but the two-step cancel+remove approach was fighting vanilla, leaving the apple in inventory with no effects applied.
+- Fix: no longer cancel the consume event — vanilla handles item removal reliably. A 1-tick delayed `runTaskLater` then sets `health=20.0` and `absorptionAmount=4.0` (2 yellow absorption hearts) after vanilla has finished. Vanilla Regen II is still active but harmless at full health.
+
+**Arrow pickup fix (`BridgeKitListener.onPickupItem`):**
+- Root cause: all arrow pickups were blocked unconditionally during any match phase, preventing players from ever retrieving dropped arrows.
+- Fix: pickup is now allowed when the player currently has 0 arrows. If they pick one up, `match.cancelArrowRegen(uid)` is called so the pending regen task doesn't stack a second arrow on top. Pickup is still blocked when the player already has 1+ arrows (cap enforcement).
+
+---
+
 ## v1.3.0 — 2026-05-19
 ### Added — Bridge kit mechanics (golden apple override, arrow regen, diamond pickaxe)
 
