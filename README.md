@@ -34,8 +34,15 @@ The plugin **will not load** unless FAWE is installed on the server.
 | 1 | Bow |
 | 2 | 32× Colored Terracotta (team color) |
 | 3 | 3× Golden Apple |
+| 4 | Diamond Pickaxe (Efficiency II) |
 | 8 | 1× Arrow |
 | Armor | Dyed leather (red or blue) |
+
+### Kit mechanics
+
+**Golden apple** — eating a golden apple during a Bridge match gives instant full health and 2 absorption hearts (4 HP) instead of the vanilla potion effects. Outside a Bridge match the vanilla behavior is unchanged.
+
+**Arrow regeneration** — each player is capped at 1 arrow. Shooting it schedules a 3.5-second regen; the arrow returns automatically unless the player receives a fresh loadout first (soft reset, death respawn). Stray arrows on the arena floor cannot be picked up during a match.
 
 ---
 

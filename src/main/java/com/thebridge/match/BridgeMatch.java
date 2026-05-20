@@ -16,7 +16,9 @@ import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -57,6 +59,10 @@ public class BridgeMatch {
     private final Set<UUID> frozenPlayers = new HashSet<>();
 
     private BukkitRunnable voidCheckTask = null;
+
+    // Pending arrow-regen tasks keyed by player UUID.  Cancelled whenever a fresh
+    // loadout is given (the kit includes 1 arrow) and at match end.
+    private final Map<UUID, BukkitRunnable> arrowRegenTasks = new HashMap<>();
 
     // Snapshots of the configured release zone blocks, captured at match start.
     // Restored before each round (so players land on solid ground) then cleared
@@ -287,6 +293,7 @@ public class BridgeMatch {
         if (state == MatchState.ENDED) return;
         state = MatchState.ENDED;
         cancelCountdown();
+        cancelAllArrowRegens();
         if (voidCheckTask != null) { voidCheckTask.cancel(); voidCheckTask = null; }
 
         unfreezePlayer(redPlayer);
@@ -456,6 +463,9 @@ public class BridgeMatch {
     // ── Loadout ───────────────────────────────────────────────────────────────
 
     private void giveLoadout(UUID uid, Team team) {
+        // Cancel any pending arrow regen — the fresh kit already includes 1 arrow.
+        cancelArrowRegen(uid);
+
         Player p = Bukkit.getPlayer(uid);
         if (p == null) return;
         p.getInventory().clear();
@@ -464,10 +474,16 @@ public class BridgeMatch {
         Material blockMat   = team == Team.RED ? Material.RED_TERRACOTTA   : Material.BLUE_TERRACOTTA;
         Color    armorColor = team == Team.RED ? Color.fromRGB(180, 20, 20) : Color.fromRGB(20, 20, 200);
 
+        ItemStack pick = new ItemStack(Material.DIAMOND_PICKAXE);
+        ItemMeta pickMeta = pick.getItemMeta();
+        pickMeta.addEnchant(Enchantment.EFFICIENCY, 2, true);
+        pick.setItemMeta(pickMeta);
+
         p.getInventory().setItem(0, new ItemStack(Material.IRON_SWORD));
         p.getInventory().setItem(1, new ItemStack(Material.BOW));
         p.getInventory().setItem(2, new ItemStack(blockMat, 32));
         p.getInventory().setItem(3, new ItemStack(Material.GOLDEN_APPLE, 3));
+        p.getInventory().setItem(4, pick);
         p.getInventory().setItem(8, new ItemStack(Material.ARROW, 1));
 
         p.getInventory().setHelmet(dyeArmor(new ItemStack(Material.LEATHER_HELMET),     armorColor));
@@ -727,6 +743,35 @@ public class BridgeMatch {
         plugin.getLogger().info("[Bridge] Respawning " + p.getName() + " as " + team
                 + " in arena '" + arena.getId() + "'.");
         giveLoadout(uid, team);
+    }
+
+    // ── Arrow regeneration ────────────────────────────────────────────────────
+
+    public void scheduleArrowRegen(UUID uid) {
+        cancelArrowRegen(uid);
+        BukkitRunnable task = new BukkitRunnable() {
+            @Override public void run() {
+                arrowRegenTasks.remove(uid);
+                if (state == MatchState.ENDED) return;
+                Player p = Bukkit.getPlayer(uid);
+                if (p == null || !p.isOnline()) return;
+                if (p.getInventory().contains(Material.ARROW)) return;
+                p.getInventory().addItem(new ItemStack(Material.ARROW, 1));
+                debugAdmin("Arrow REGEN: player=" + p.getName());
+            }
+        };
+        arrowRegenTasks.put(uid, task);
+        task.runTaskLater(plugin, 70L); // 3.5 s at 20 TPS
+    }
+
+    public void cancelArrowRegen(UUID uid) {
+        BukkitRunnable existing = arrowRegenTasks.remove(uid);
+        if (existing != null) existing.cancel();
+    }
+
+    private void cancelAllArrowRegens() {
+        arrowRegenTasks.values().forEach(BukkitRunnable::cancel);
+        arrowRegenTasks.clear();
     }
 
     // ── Admin debug helper ────────────────────────────────────────────────────

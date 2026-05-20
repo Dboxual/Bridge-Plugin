@@ -4,6 +4,7 @@ import com.thebridge.arena.Arena;
 import com.thebridge.arena.ArenaManager;
 import com.thebridge.arena.ArenaState;
 import com.thebridge.commands.BridgeCommand;
+import com.thebridge.listeners.BridgeKitListener;
 import com.thebridge.listeners.GoalListener;
 import com.thebridge.listeners.MatchListener;
 import com.thebridge.listeners.SignListener;
@@ -44,10 +45,11 @@ public class TheBridgePlugin extends JavaPlugin {
         getCommand("bridge").setExecutor(cmd);
         getCommand("bridge").setTabCompleter(cmd);
 
-        getServer().getPluginManager().registerEvents(new SignListener(this),  this);
-        getServer().getPluginManager().registerEvents(new GoalListener(this),  this);
-        getServer().getPluginManager().registerEvents(new MatchListener(this), this);
-        getServer().getPluginManager().registerEvents(new WandListener(this),  this);
+        getServer().getPluginManager().registerEvents(new SignListener(this),     this);
+        getServer().getPluginManager().registerEvents(new GoalListener(this),     this);
+        getServer().getPluginManager().registerEvents(new MatchListener(this),    this);
+        getServer().getPluginManager().registerEvents(new WandListener(this),     this);
+        getServer().getPluginManager().registerEvents(new BridgeKitListener(this), this);
 
         queueManager.updateAllSigns();
 

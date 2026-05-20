@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.3.0 — 2026-05-19
+### Added — Bridge kit mechanics (golden apple override, arrow regen, diamond pickaxe)
+
+**Golden apple override (`BridgeKitListener`):**
+- Eating a `GOLDEN_APPLE` during an active Bridge match cancels the vanilla event (Regeneration II + slow Absorption tick) and instead instantly sets the player to full health and gives 2 absorption hearts (4 HP via `setAbsorptionAmount(4.0)`).
+- The item is manually consumed (1 removed from whichever hand holds it) so the player doesn't keep the apple.
+- Players outside an active Bridge match see normal vanilla behavior.
+
+**Arrow regeneration:**
+- Each Bridge player is capped at 1 arrow. `BridgeKitListener.onShootBow` (`EntityShootBowEvent`) detects when an arrow is fired during an active match and calls `BridgeMatch.scheduleArrowRegen(UUID)`.
+- `scheduleArrowRegen` schedules a 70-tick (3.5 s) delayed task. When it fires, if the player is still in the match and has no arrows, 1 arrow is added to their inventory.
+- `cancelArrowRegen(UUID)` is called inside `giveLoadout` — a soft reset or respawn already gives a fresh arrow so the regen must be cancelled to prevent stacking above 1.
+- `cancelAllArrowRegens()` is called at the top of `endMatch` to clean up all pending tasks.
+- `BridgeKitListener.onPickupItem` (`EntityPickupItemEvent`) cancels arrow pickups during COUNTDOWN, ACTIVE, and RESETTING phases so floor arrows cannot be collected.
+
+**Updated kit (`giveLoadout`):**
+- Added Diamond Pickaxe with Efficiency II at slot 4.
+- Full slot layout: 0 Iron Sword, 1 Bow, 2 Team Blocks (×32), 3 Golden Apple (×3), 4 Diamond Pickaxe (Eff II), 8 Arrow (×1), armor dyed leather.
+
+---
+
 ## v1.2.9 — 2026-05-18
 ### Fixed — Multiverse-Inventories timing: survival inventory no longer wiped on match join
 

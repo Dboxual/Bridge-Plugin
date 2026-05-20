@@ -24,6 +24,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
   GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
   MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
   WandListener                — PlayerInteractEvent (pos1/pos2), BlockBreakEvent, BlockDamageEvent
+  BridgeKitListener           — PlayerItemConsumeEvent (gapple override), EntityShootBowEvent (arrow regen), EntityPickupItemEvent (block extra arrows)
 ```
 
 ---
@@ -103,7 +104,7 @@ Two completely separate systems:
 
 ## Loadout
 
-Given at match start and on every soft reset:
+Given at match start and on every soft reset (`giveLoadout(UUID, Team)`):
 
 | Slot | Item |
 |---|---|
@@ -111,10 +112,25 @@ Given at match start and on every soft reset:
 | 1 | Bow |
 | 2 | 32× Team-colored Terracotta |
 | 3 | 3× Golden Apple |
+| 4 | Diamond Pickaxe (Efficiency II) |
 | 8 | 1× Arrow |
 | Armor | Dyed leather (RED or BLUE) |
 
 Players also receive 20 HP, 20 food, 20 saturation on each load.
+
+`giveLoadout` always calls `cancelArrowRegen(uid)` first — the fresh kit includes 1 arrow so any pending regen would cause a double-stack.
+
+## Kit mechanics
+
+### Golden apple override (`BridgeKitListener.onConsume`)
+`PlayerItemConsumeEvent` is cancelled for `GOLDEN_APPLE` when the player is in `ACTIVE` state. The item is manually consumed (1 removed from the hand stack) and Bridge-specific effects applied: `setHealth(20.0)` + `setAbsorptionAmount(4.0)`. Vanilla Regeneration II and slow-absorption tick do not fire. Outside an active Bridge match the event is not touched.
+
+### Arrow regeneration
+- `BridgeMatch.arrowRegenTasks: Map<UUID, BukkitRunnable>` — pending regen tasks keyed by player.
+- `scheduleArrowRegen(UUID)` — cancels any existing task, schedules a 70-tick (3.5 s) delayed task that gives back 1 arrow if the player has none and the match has not ended.
+- `cancelArrowRegen(UUID)` — called from `giveLoadout` to prevent double-stacking when kit is refreshed.
+- `cancelAllArrowRegens()` — called from `endMatch` to clean up all pending tasks.
+- `BridgeKitListener.onPickupItem` cancels `EntityPickupItemEvent` for arrows in any match phase (COUNTDOWN / ACTIVE / RESETTING) so floor arrows cannot be picked up.
 
 ---
 
