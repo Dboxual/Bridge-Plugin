@@ -1,5 +1,5 @@
 name: TheBridge
-version: '1.3.8'
+version: '1.3.9'
 main: com.thebridge.TheBridgePlugin
 api-version: '1.21'
 description: The Bridge minigame — arena infrastructure
@@ -13,10 +13,5 @@ commands:
 
 permissions:
   bridge.admin:
-    description: Access to all TheBridge admin commands
+    description: Access to all TheBridge setup and admin commands
     default: op
-    children:
-      bridge.play: true
-  bridge.play:
-    description: Join Bridge queues and play matches
-    default: true

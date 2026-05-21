@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.3.9 — 2026-05-21
+### Refactor — Permissionless player model; sign debug logging
+
+**Permissions**
+- Bridge signs are now public portals — no permission of any kind required to click them.
+- `bridge.play` permission removed entirely from `plugin.yml` and all runtime code. No runtime code ever checked it after v1.3.8; this removes the dead declaration.
+- Only `bridge.admin` (default: op) remains, covering all setup and admin commands.
+
+**SignListener hardening**
+- `EventPriority.HIGHEST, ignoreCancelled = false` retained — fires after protection plugins, processes registered Bridge signs even when the event was pre-cancelled.
+- No permission check of any kind on the sign-use path.
+- Sign-click decision logged at each step when `settings.debug: true`:
+  - Clicked block type, location, whether the event was already cancelled, registered-sign match result.
+  - Per-rejection reason: not configured, no schematic, already in match, already queued, wrong arena state.
+  - Final decision: queuing player or leaving queue.
+
+---
+
 ## v1.3.8 — 2026-05-21
 ### Fixed — Regression: `bridge.play` permission check blocked all sign use
 
