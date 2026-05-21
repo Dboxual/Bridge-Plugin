@@ -22,7 +22,9 @@ public class SignListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    // ignoreCancelled = false so we can still process registered Bridge signs
+    // even when a protection plugin (e.g. WorldGuard) has already cancelled the event.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
         if (event.getHand() != EquipmentSlot.HAND) return;
@@ -46,6 +48,10 @@ public class SignListener implements Listener {
 
         if (target == null) return;
 
+        if (event.isCancelled()) {
+            plugin.getLogger().fine("[Bridge] Sign click pre-cancelled by another plugin; processing registered Bridge sign for arena '" + target.getId() + "'.");
+        }
+        // Always cancel to prevent vanilla sign editing.
         event.setCancelled(true);
         handleSignClick(event.getPlayer(), target);
     }

@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.3.7 — 2026-05-21
+### Fixed — Bridge signs blocked by WorldGuard / protection plugins
+
+- `SignListener.onInteract` now runs at `EventPriority.HIGHEST` with `ignoreCancelled = false`.
+- If a protection plugin (e.g. WorldGuard) cancels the event before TheBridge processes it, registered Bridge signs are still handled correctly.
+- The event is always re-cancelled after processing to prevent vanilla sign editing.
+- A `FINE`-level console message is logged when a pre-cancelled event is overridden, visible with debug logging enabled.
+- Non-Bridge signs are unaffected — only blocks in the registered sign list bypass the cancel guard.
+
+---
+
 ## v1.3.6 — 2026-05-20
 ### Fixed — Sign join permissions and instant-forfeit on cross-world join
 

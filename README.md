@@ -152,5 +152,5 @@ cp ../Pinpoint/libs/*.jar libs/
 
 # 2. Build
 bash build.sh
-# Output: build/TheBridge-1.3.6.jar
+# Output: build/TheBridge-1.3.7.jar
 ```
