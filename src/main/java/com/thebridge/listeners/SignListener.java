@@ -57,10 +57,6 @@ public class SignListener implements Listener {
     }
 
     private void handleSignClick(Player player, Arena arena) {
-        if (!player.hasPermission("bridge.play")) {
-            player.sendMessage(Component.text("§cYou don't have permission to join Bridge matches."));
-            return;
-        }
         if (!arena.isFullyConfigured()) {
             player.sendMessage(Component.text("§cThis arena is not fully configured yet."));
             return;

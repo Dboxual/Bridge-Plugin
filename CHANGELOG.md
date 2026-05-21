@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.8 — 2026-05-21
+### Fixed — Regression: `bridge.play` permission check blocked all sign use
+
+- Removed the `bridge.play` permission check from `SignListener.handleSignClick`.
+- Any player can now click a registered Bridge join sign with no permission required, matching pre-v1.3.6 behavior.
+- `bridge.admin` is still required for all sign setup/removal and admin commands.
+- WorldGuard override (`EventPriority.HIGHEST, ignoreCancelled = false`) is retained.
+
+---
+
 ## v1.3.7 — 2026-05-21
 ### Fixed — Bridge signs blocked by WorldGuard / protection plugins
 
