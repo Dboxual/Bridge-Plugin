@@ -5,6 +5,7 @@ import com.thebridge.arena.Arena;
 import com.thebridge.arena.ArenaState;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -13,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 
 public class SignListener implements Listener {
 
@@ -26,14 +28,39 @@ public class SignListener implements Listener {
     // and still processes registered Bridge signs even if the event was cancelled.
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
+        boolean debug = plugin.getConfig().getBoolean("settings.debug", false);
+
+        // ── Diagnostic logging (before any early return) ──────────────────────
+        // Logs ALL right-click-block events, both HAND and OFF_HAND, so we can
+        // see the full Bukkit double-fire picture when shift-clicking with items.
+        if (debug && event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+            Player p = event.getPlayer();
+            Block b = event.getClickedBlock();
+            ItemStack mainHand = p.getInventory().getItemInMainHand();
+            ItemStack offHand  = p.getInventory().getItemInOffHand();
+            plugin.getLogger().info("[Bridge] PlayerInteractEvent:"
+                    + " hand=" + event.getHand()
+                    + " action=" + event.getAction()
+                    + " block=" + (b != null ? b.getType() : "null")
+                    + " mainHand=" + (mainHand.getType() == Material.AIR ? "empty" : mainHand.getType())
+                    + " offHand=" + (offHand.getType() == Material.AIR ? "empty" : offHand.getType())
+                    + " sneaking=" + p.isSneaking()
+                    + " useBlock=" + event.useInteractedBlock()
+                    + " useItem=" + event.useItemInHand()
+                    + " cancelled=" + event.isCancelled());
+        }
+
+        // ── Early returns ─────────────────────────────────────────────────────
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        // Only process the HAND slot — Bukkit fires PlayerInteractEvent twice
+        // (once for HAND, once for OFF_HAND). Ignoring OFF_HAND prevents double
+        // processing and avoids issues when the off-hand item triggers vanilla behaviour.
         if (event.getHand() != EquipmentSlot.HAND) return;
 
         Block block = event.getClickedBlock();
         if (block == null) return;
         if (!(block.getState() instanceof org.bukkit.block.Sign)) return;
 
-        boolean debug = plugin.getConfig().getBoolean("settings.debug", false);
         Location clicked = block.getLocation();
 
         Arena target = null;
@@ -48,17 +75,17 @@ public class SignListener implements Listener {
         }
 
         if (debug) {
-            plugin.getLogger().info("[Bridge] Sign click: block=" + block.getType()
+            plugin.getLogger().info("[Bridge] Sign lookup:"
                     + " loc=" + fmtLoc(clicked)
-                    + " cancelled=" + event.isCancelled()
-                    + " registeredMatch=" + (target != null));
+                    + " registeredMatch=" + (target != null)
+                    + " cancelled=" + event.isCancelled());
         }
 
         if (target == null) return;
 
         if (event.isCancelled() && debug) {
-            plugin.getLogger().info("[Bridge] Sign pre-cancelled by protection plugin; "
-                    + "processing registered Bridge sign for arena '" + target.getId() + "'.");
+            plugin.getLogger().info("[Bridge] Sign pre-cancelled by another plugin; "
+                    + "overriding to process registered Bridge sign for arena '" + target.getId() + "'.");
         }
 
         // Always cancel to prevent vanilla sign editing.

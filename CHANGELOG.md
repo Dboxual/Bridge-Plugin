@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.0 — 2026-05-21
+### Investigation — Sign click hand/action diagnostic logging
+
+- Diagnostic log block moved to the very top of `onInteract`, **before all early returns**, so both `HAND` and `OFF_HAND` firings are visible in the console.
+- When `settings.debug: true`, every `RIGHT_CLICK_BLOCK` event (regardless of hand slot) now logs: `hand`, `action`, `block type`, `mainHand item`, `offHand item`, `sneaking`, `useInteractedBlock`, `useItemInHand`, `cancelled`.
+- A second log line fires after the registered-sign lookup, showing the block location and whether a registered match was found.
+- Logic unchanged: only `EquipmentSlot.HAND` is processed; `RIGHT_CLICK_BLOCK` is handled regardless of sneaking or held item; registered Bridge signs are processed even when the event is pre-cancelled; event is cancelled afterward to prevent vanilla sign editing.
+
+---
+
 ## v1.3.9 — 2026-05-21
 ### Refactor — Permissionless player model; sign debug logging
 
