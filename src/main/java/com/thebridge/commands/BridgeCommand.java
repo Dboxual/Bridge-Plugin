@@ -65,6 +65,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "setvoidlevel"    -> handleSetVoidLevel(sender, args);
             case "setpos1"         -> handleSetLoc(sender, args, Field.POS1);
             case "setpos2"         -> handleSetLoc(sender, args, Field.POS2);
+            case "setreturn"       -> handleSetLoc(sender, args, Field.RETURN_LOCATION);
             case "wand"         -> handleWand(sender);
             case "selection"    -> handleSelection(sender);
             case "setsign"      -> handleSetSign(sender, args);
@@ -138,11 +139,12 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         Location loc = player.getLocation();
 
         switch (field) {
-            case RED_SPAWN      -> arena.setRedSpawn(loc);
-            case BLUE_SPAWN     -> arena.setBlueSpawn(loc);
-            case LOBBY_SPAWN    -> arena.setLobbySpawn(loc);
-            case POS1           -> arena.setPos1(loc);
-            case POS2           -> arena.setPos2(loc);
+            case RED_SPAWN         -> arena.setRedSpawn(loc);
+            case BLUE_SPAWN        -> arena.setBlueSpawn(loc);
+            case LOBBY_SPAWN       -> arena.setLobbySpawn(loc);
+            case POS1              -> arena.setPos1(loc);
+            case POS2              -> arena.setPos2(loc);
+            case RETURN_LOCATION   -> arena.setReturnLocation(loc);
         }
 
         plugin.getArenaManager().saveArena(arena);
@@ -626,7 +628,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of("create", "delete", "list",
                     "reload", "enable", "disable",
-                    "setredspawn", "setbluespawn", "setlobby",
+                    "setredspawn", "setbluespawn", "setlobby", "setreturn",
                     "setredgoal", "setbluegoal",
                     "setredrelease", "setbluerelease",
                     "setarena", "setvoidlevel",
@@ -639,6 +641,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                 && !args[0].equalsIgnoreCase("reload")
                 && !args[0].equalsIgnoreCase("version")
                 && !args[0].equalsIgnoreCase("wand")
+                && !args[0].equalsIgnoreCase("debug")
                 && !args[0].equalsIgnoreCase("selection")) {
             return plugin.getArenaManager().getAllArenas().stream()
                     .map(Arena::getId)
@@ -676,6 +679,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge setredrelease §f<arena>       §7Set red release zone from wand selection");
         sender.sendMessage("  §b/bridge setbluerelease §f<arena>      §7Set blue release zone from wand selection");
         sender.sendMessage("  §b/bridge setarena §f<arena>            §7Set full reset region from wand selection");
+        sender.sendMessage("  §b/bridge setreturn §f<arena>            §7Set return location (survival spawn) at your position");
         sender.sendMessage("  §b/bridge setvoidlevel §f<arena>        §7Set void Y level at your current position");
         sender.sendMessage("  §b/bridge save §f<arena>                §7Snapshot reset region as schematic (required before enable)");
         sender.sendMessage("  §b/bridge setsign §f<arena>             §7Register the sign you're looking at");
@@ -718,7 +722,8 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         BLUE_SPAWN("Blue spawn"),
         LOBBY_SPAWN("Lobby spawn"),
         POS1("Pos1"),
-        POS2("Pos2");
+        POS2("Pos2"),
+        RETURN_LOCATION("Return location");
 
         final String label;
         Field(String label) { this.label = label; }

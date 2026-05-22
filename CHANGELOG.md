@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.4.2 — 2026-05-22
+### Fixed — Rejoin at arena spawn; stranded-player sign return; void-fall invincibility
+
+**Bug 1 — Player rejoins at bridge spawn after disconnecting mid-match**
+- `BridgeMatch.endMatch()` now stores a pending return destination in `MatchManager` for offline players (those who disconnected before the match ended) instead of skipping them silently.
+- `MatchListener` gained an `onJoin` handler: on rejoin, if a pending return exists, a 1-tick delayed task clears inventory + scoreboard, removes invulnerability, and teleports the player to the return destination.
+- `MatchManager` gained `setPendingReturn(UUID, Location)` and `consumePendingReturn(UUID)`.
+
+**Bug 2 — Bridge signs should return stranded players to survival, not queue them**
+- `Arena` gained a `returnLocation` field (survival-world spawn, separate from `lobbySpawn`).
+- `ArenaStorage` serialises/deserialises `return-location` in `arenas.yml`.
+- `BridgeMatch.endMatch()` uses `returnLocation` when set, falling back to `lobbySpawn`.
+- `SignListener.handleSignClick()` checks whether the clicking player is physically inside any arena region but not in a match; if so, teleports them to the effective return location instead of queuing them.
+- New admin command `/bridge setreturn <arena>` — sets `returnLocation` at the player's current position and auto-saves. Added to tab completion and help text.
+
+**Bug 3 — Void fall gives brief invincibility**
+- `BridgeMatch.clearEffects()` now calls `player.setInvulnerable(false)` in addition to clearing potion effects, fire, freeze, and damage ticks.
+- `BridgeMatch.handleVoidFall()` schedules a 2-tick delayed task after the teleport to re-clear `setInvulnerable(false)` and `setNoDamageTicks(0)`, ensuring any ticks re-applied by the teleport are removed.
+
+---
+
 ## v1.4.1 — 2026-05-22
 ### Added — Startup verification logging and `/bridge version`
 

@@ -24,7 +24,8 @@ The plugin **will not load** unless FAWE is installed on the server.
 - Players score by entering the **opponent's goal region** (a configurable cuboid area — Bedrock-friendly).
 - After each point a **soft reset** runs: players are teleported back to spawn, healed, re-given loadout, frozen for a 3-second countdown, then the spawn platform drops away so they fall naturally into the arena. No schematic paste runs mid-match — bridges built during the round persist.
 - First to **5 points** wins. A **full FAWE schematic reset** runs at match end, restoring the arena completely. Both players are sent to `lobbySpawn`.
-- A player disconnecting mid-match forfeits to their opponent.
+- A player disconnecting mid-match forfeits to their opponent. When the match ends, their return destination is stored; on rejoin they are automatically cleared and teleported back to the configured return location.
+- Clicking a queue sign while physically inside an arena region (stranded after a disconnect + rejoin) teleports the player out instead of queuing them.
 
 ### Standard loadout (given at match start and after each soft reset)
 
@@ -60,6 +61,7 @@ The plugin **will not load** unless FAWE is installed on the server.
 | `/bridge setlobby <arena>` | Set lobby/waiting spawn at your location |
 | `/bridge setredspawn <arena>` | Set red team spawn at your location |
 | `/bridge setbluespawn <arena>` | Set blue team spawn at your location |
+| `/bridge setreturn <arena>` | Set survival-world return location at your position (used after match ends and for stranded players) |
 | `/bridge wand` | Get the Bridge Setup Wand (left-click block=pos1, right-click block=pos2) |
 | `/bridge selection` | Show current wand selection: pos1, pos2, world, dimensions |
 | `/bridge setredgoal <arena>` | Set red goal region from wand selection |
@@ -96,10 +98,11 @@ All `set*` commands auto-save to `arenas.yml` immediately. No manual config edit
    - `/bridge setbluerelease <arena>` — saves wand selection as blue release zone.
    - `/bridge setarena <arena>` — saves wand selection as the full reset region (required for save).
    - Use `/bridge showgoals <arena>` to verify goal placement with particles.
-6. `/bridge setvoidlevel <arena>` — stand at the void threshold and run (optional but recommended).
-7. `/bridge save <arena>` — snapshot the reset region as a schematic.
-8. Place a sign, look at it, `/bridge setsign <arena>` — registers it as a queue sign.
-9. `/bridge enable <arena>` — opens the arena to players. Players right-click the sign to queue.
+6. `/bridge setreturn <arena>` — stand at the survival-world spawn and run. Players are teleported here after a match ends (or on rejoin if they were offline when it ended). Falls back to `lobbySpawn` if not set.
+7. `/bridge setvoidlevel <arena>` — stand at the void threshold and run (optional but recommended).
+8. `/bridge save <arena>` — snapshot the reset region as a schematic.
+9. Place a sign, look at it, `/bridge setsign <arena>` — registers it as a queue sign.
+10. `/bridge enable <arena>` — opens the arena to players. Players right-click the sign to queue.
 
 To take an arena offline: `/bridge disable <arena>`. To reopen: `/bridge enable <arena>`. The enabled state persists across server restarts.
 
@@ -152,5 +155,5 @@ cp ../Pinpoint/libs/*.jar libs/
 
 # 2. Build
 bash build.sh
-# Output: build/TheBridge-1.3.9.jar
+# Output: build/TheBridge-1.4.2.jar
 ```

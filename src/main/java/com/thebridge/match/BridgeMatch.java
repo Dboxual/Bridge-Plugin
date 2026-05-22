@@ -328,6 +328,7 @@ public class BridgeMatch {
             loser.playSound(loser.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.4f, 1.0f);
         }
 
+        Location returnDest = arena.hasReturnLocation() ? arena.getReturnLocation() : arena.getLobbySpawn();
         for (UUID uid : new UUID[]{redPlayer, bluePlayer}) {
             Player p = Bukkit.getPlayer(uid);
             if (p != null) {
@@ -337,7 +338,10 @@ public class BridgeMatch {
                 p.getInventory().clear();
                 debugAdmin("Inventory CLEARED (game kit removed): player=" + p.getName());
                 p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
-                if (arena.getLobbySpawn() != null) teleportSafe(uid, arena.getLobbySpawn());
+                if (returnDest != null) teleportSafe(uid, returnDest);
+            } else if (returnDest != null) {
+                // Player is offline — return them when they rejoin.
+                plugin.getMatchManager().setPendingReturn(uid, returnDest);
             }
         }
 
@@ -515,6 +519,7 @@ public class BridgeMatch {
         player.setArrowsInBody(0);
         player.setFreezeTicks(0);
         player.setNoDamageTicks(0);
+        player.setInvulnerable(false);
         player.setAbsorptionAmount(0.0);
         player.setVelocity(new Vector(0, 0, 0));
     }
@@ -723,6 +728,11 @@ public class BridgeMatch {
         clearEffects(p);
         teleportSafe(uid, spawn);
         giveLoadout(uid, team);
+        // Teleport may reset NoDamageTicks internally; clear again after it settles.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player pp = Bukkit.getPlayer(uid);
+            if (pp != null) { pp.setInvulnerable(false); pp.setNoDamageTicks(0); }
+        }, 2L);
     }
 
     // ── Death respawn support ─────────────────────────────────────────────────

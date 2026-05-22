@@ -2,6 +2,7 @@ package com.thebridge.match;
 
 import com.thebridge.TheBridgePlugin;
 import com.thebridge.arena.Arena;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
 import java.util.Collection;
@@ -18,6 +19,7 @@ public class MatchManager {
     private final Map<UUID, BridgeMatch> playerMatches = new HashMap<>();
     private final Map<String, BridgeMatch> arenaMatches = new HashMap<>();
     private final Set<UUID> pluginTeleporting = new HashSet<>();
+    private final Map<UUID, Location> pendingReturns = new HashMap<>();
 
     public MatchManager(TheBridgePlugin plugin) {
         this.plugin = plugin;
@@ -60,4 +62,9 @@ public class MatchManager {
     public void markPluginTeleport(UUID uid) { pluginTeleporting.add(uid); }
     public void clearPluginTeleport(UUID uid) { pluginTeleporting.remove(uid); }
     public boolean isPluginTeleporting(UUID uid) { return pluginTeleporting.contains(uid); }
+
+    // ── Pending return for players who disconnected mid-match ─────────────────
+
+    public void setPendingReturn(UUID uid, Location loc) { pendingReturns.put(uid, loc); }
+    public Location consumePendingReturn(UUID uid) { return pendingReturns.remove(uid); }
 }
