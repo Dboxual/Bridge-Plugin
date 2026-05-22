@@ -15,14 +15,14 @@ TheBridgePlugin               — entry point; wires all managers + registers li
     Arena                     — model: spawns, goal regions, reset region, signs, state
     ArenaState                — enum: DISABLED, WAITING, STARTING, IN_GAME, RESETTING
   SchematicManager            — FAWE async save/restore with console debug logging
-  MatchManager                — tracks active BridgeMatch instances; plugin-teleport flag; pendingReturns for offline players
+  MatchManager                — tracks active BridgeMatch instances; plugin-teleport flag set
     BridgeMatch               — single match: countdown, scoring, soft reset, full end-reset, forfeit
   QueueManager                — per-arena player queues; starts match when 2 queued
   WandManager                 — per-player pos1/pos2 selections; showSelectionOutline() draws lime particles
   BridgeCommand               — /bridge admin subcommands + tab completion; reload reloads config+arenas from disk (blocked during active matches); enable/disable manage arena open state; setarena uses wand selection to set reset region; removesign unregisters a sign by look-target
   SignListener                — right-click queue sign → join/leave queue
   GoalListener                — PlayerMoveEvent (HIGHEST priority) → freeze enforcement + goal detection
-  MatchListener               — PlayerJoin (pending return) / PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
+  MatchListener               — PlayerQuit/WorldChange/Teleport → queue leave or match forfeit
   WandListener                — PlayerInteractEvent (pos1/pos2), BlockBreakEvent, BlockDamageEvent
   BridgeKitListener           — PlayerItemConsumeEvent (gapple override), EntityShootBowEvent (arrow regen), EntityPickupItemEvent (block extra arrows)
 ```
@@ -37,8 +37,7 @@ TheBridgePlugin               — entry point; wires all managers + registers li
 |---|---|
 | `id` | Unique lowercase identifier; immutable after creation |
 | `redSpawn`, `blueSpawn` | Team spawn points used at match start and soft resets |
-| `lobbySpawn` | Lobby/waiting spawn in the bridge world; used as fallback return destination |
-| `returnLocation` | Survival-world spawn; where players are sent after a match ends (falls back to `lobbySpawn` if not set). Set via `/bridge setreturn <arena>`. |
+| `lobbySpawn` | Where players are sent after the match ends |
 | `redGoalPos1/2`, `blueGoalPos1/2` | Two-corner regions; scoring fires when a player's block position is inside the opponent's region |
 | `redRelease1/2`, `blueRelease1/2` | Two-corner regions defining the floor blocks removed each round to drop players into the arena. If not set, a 3×3 fallback at Y−1 under each spawn is used and a console warning is logged. |
 | `pos1`, `pos2` | FAWE region corners for end-of-match save/reset |
@@ -77,7 +76,7 @@ Arenas load from `arenas.yml`. If `enabled: true` is stored, `ArenaStorage.deser
    - **Do NOT reinstate `hasChangedBlock()`** — it causes fast-falling players to skip over the goal region entirely.
 4. `onGoalEntered(Player, Location from, Location to)`: calls `touchesOpponentGoal()` which sweeps the player's 3×3 XZ footprint across every Y block from `floor(from.Y)` to `floor(to.Y)` (cap 16). First hit → score. Silent on miss (no logging). Logs once to console on score.
 5. If no win: `softReset()` — teleports both to spawn, heals, restores floor, re-gives loadout, freezes, 3-second countdown, drops floor → `state = ACTIVE`
-6. If win: `endMatch()` — announces winner with title+sound, clears inventories, teleports both players to `returnLocation` (or `lobbySpawn` fallback). Offline players get a `pendingReturn` stored in `MatchManager`; the `onJoin` handler in `MatchListener` applies it 1 tick after rejoin. Clears arena entities, removes match, then async FAWE reset → `state = WAITING`
+6. If win: `endMatch()` — announces winner with title+sound, clears inventories, teleports to `lobbySpawn`, clears arena entities, removes match, then async FAWE reset → `state = WAITING`
 7. Disconnect: `MatchListener` → `match.onPlayerDisconnect()` → `endMatch(opponent)`
 
 ---
@@ -235,7 +234,7 @@ Gradle 8.x is **not compatible with Java 25**. All builds use `build.sh`.
 # Copy from Pinpoint/libs/ + place FAWE as fawe-bukkit.jar
 
 bash build.sh
-# Output: build/TheBridge-1.4.2.jar
+# Output: build/TheBridge-1.4.3.jar
 ```
 
 Classpath separator is auto-detected: `;` on Windows (Git Bash/MSYS), `:` on macOS/Linux. `build.gradle.kts` exists for IDE dependency resolution only.

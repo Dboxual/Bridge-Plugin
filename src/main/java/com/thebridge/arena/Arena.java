@@ -34,10 +34,6 @@ public class Arena {
     private Location pos1;
     private Location pos2;
 
-    // Where players are sent after a match ends or on rejoin when stranded.
-    // Typically the survival-world spawn. Falls back to lobbySpawn if not set.
-    private Location returnLocation;
-
     private String schematicName;
 
     private Integer voidLevel = null;
@@ -101,10 +97,6 @@ public class Arena {
 
     public Location getPos2() { return pos2; }
     public void setPos2(Location pos2) { this.pos2 = pos2; }
-
-    public Location getReturnLocation() { return returnLocation; }
-    public void setReturnLocation(Location returnLocation) { this.returnLocation = returnLocation; }
-    public boolean hasReturnLocation() { return returnLocation != null; }
 
     // ── World convenience ─────────────────────────────────────────────────────
 

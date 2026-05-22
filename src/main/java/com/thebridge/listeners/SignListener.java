@@ -111,24 +111,6 @@ public class SignListener implements Listener {
             return;
         }
 
-        // If the player is physically inside any arena region but not in a match,
-        // they are stranded (e.g. rejoined at bridge spawn after a disconnect).
-        // Teleport them out rather than queuing them.
-        for (Arena a : plugin.getArenaManager().getAllArenas()) {
-            if (a.hasRegion() && a.isInsideArena(player.getLocation())) {
-                Location returnDest = a.hasReturnLocation() ? a.getReturnLocation() : a.getLobbySpawn();
-                if (returnDest != null) {
-                    if (debug) plugin.getLogger().info("[Bridge] Sign: " + player.getName()
-                            + " stranded in arena '" + a.getId() + "' — teleporting to return location.");
-                    player.sendMessage(Component.text("§eYou were returned from the arena."));
-                    player.teleport(returnDest);
-                } else {
-                    player.sendMessage(Component.text("§cYou appear to be stranded in the arena. Ask an admin to set a return location."));
-                }
-                return;
-            }
-        }
-
         if (plugin.getQueueManager().isQueued(player)) {
             String queued = plugin.getQueueManager().getQueuedArena(player);
             if (queued.equals(arena.getId())) {

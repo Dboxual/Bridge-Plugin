@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.4.3 — 2026-05-22
+### Cleanup — Reverted over-engineered v1.4.2 rejoin/stranded fixes; kept void-fall invincibility fix
+
+Removed features added in v1.4.2 that addressed external server/plugin issues rather than plugin bugs:
+
+- **Removed `returnLocation`** — `Arena` field, getter/setter/has, `ArenaStorage` serialisation, and `/bridge setreturn` command (dispatch, enum, tab completion, help text). Players return to `lobbySpawn` after a match as before.
+- **Removed `pendingReturns`** — `MatchManager.pendingReturns` map and `setPendingReturn` / `consumePendingReturn` methods removed. `BridgeMatch.endMatch()` reverts to only handling online players.
+- **Removed `onJoin` handler** — `MatchListener.onJoin(PlayerJoinEvent)` and its imports removed.
+- **Removed stranded-player sign check** — `SignListener.handleSignClick()` no longer loops over arenas to detect players inside a region; it proceeds directly to queue logic as before.
+
+**Kept from v1.4.2 (legitimate plugin fix):**
+- `clearEffects()` calls `player.setInvulnerable(false)`.
+- `handleVoidFall()` schedules a 2-tick delayed `setInvulnerable(false)` + `setNoDamageTicks(0)` after the teleport to eliminate post-void-fall immunity windows.
+
+---
+
 ## v1.4.2 — 2026-05-22
 ### Fixed — Rejoin at arena spawn; stranded-player sign return; void-fall invincibility
 

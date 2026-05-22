@@ -12,7 +12,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -25,23 +24,6 @@ public class MatchListener implements Listener {
 
     public MatchListener(TheBridgePlugin plugin) {
         this.plugin = plugin;
-    }
-
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        UUID uid = player.getUniqueId();
-        Location dest = plugin.getMatchManager().consumePendingReturn(uid);
-        if (dest == null) return;
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            player.getInventory().clear();
-            player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
-            player.setNoDamageTicks(0);
-            player.setInvulnerable(false);
-            plugin.getMatchManager().markPluginTeleport(uid);
-            player.teleport(dest);
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.getMatchManager().clearPluginTeleport(uid));
-        }, 1L);
     }
 
     @EventHandler
