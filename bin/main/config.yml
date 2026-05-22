@@ -1,0 +1,10 @@
+settings:
+  # Subfolder inside the plugin data directory where schematics are stored
+  schematics-folder: schematics
+  # Seconds before a match or reset-continuation begins
+  countdown-seconds: 5
+  # Points required to win a match
+  points-to-win: 5
+  # Set to true to send verbose debug messages to online admins (bridge.admin).
+  # Console always receives INFO-level goal and release logs.
+  debug: false
