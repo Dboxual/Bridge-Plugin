@@ -15,6 +15,9 @@ import com.thebridge.schematic.SchematicManager;
 import com.thebridge.wand.WandManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+import java.util.List;
+
 public class TheBridgePlugin extends JavaPlugin {
 
     private ArenaManager arenaManager;
@@ -53,7 +56,7 @@ public class TheBridgePlugin extends JavaPlugin {
 
         queueManager.updateAllSigns();
 
-        getLogger().info("TheBridge v" + getDescription().getVersion() + " enabled.");
+        for (String line : getStatusLines()) getLogger().info(line);
     }
 
     @Override
@@ -68,4 +71,21 @@ public class TheBridgePlugin extends JavaPlugin {
     public MatchManager getMatchManager()     { return matchManager; }
     public QueueManager getQueueManager()     { return queueManager; }
     public WandManager getWandManager()       { return wandManager; }
+
+    public List<String> getStatusLines() {
+        int arenaCount = arenaManager.getAllArenas().size();
+        int signCount  = arenaManager.getAllArenas().stream()
+                .mapToInt(a -> a.getSignLocations().size())
+                .sum();
+        boolean debug  = getConfig().getBoolean("settings.debug", false);
+        String cfgPath = new File(getDataFolder(), "config.yml").getAbsolutePath();
+        return List.of(
+                "TheBridge v" + getPluginMeta().getVersion(),
+                "Config: " + cfgPath,
+                "debug: " + debug,
+                "SignListener: registered",
+                "Arenas loaded: " + arenaCount,
+                "Registered signs: " + signCount
+        );
+    }
 }

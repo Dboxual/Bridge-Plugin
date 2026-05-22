@@ -76,6 +76,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
             case "save"         -> handleSave(sender, args);
             case "reset"        -> handleReset(sender, args);
             case "debug"        -> handleDebug(sender, args);
+            case "version"      -> handleVersion(sender);
             default             -> sendUsage(sender);
         }
         return true;
@@ -559,6 +560,13 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void handleVersion(CommandSender sender) {
+        sender.sendMessage(PREFIX + "§ePlugin status:");
+        for (String line : plugin.getStatusLines()) {
+            sender.sendMessage("  §7" + line);
+        }
+    }
+
     // ── Particle helpers ──────────────────────────────────────────────────────
 
     private void outlineRegion(World world, Location p1, Location p2, Particle.DustOptions dust) {
@@ -624,11 +632,12 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
                     "setarena", "setvoidlevel",
                     "setpos1", "setpos2",
                     "wand", "selection", "setsign", "removesign", "showgoals",
-                    "save", "reset", "debug"), args[0]);
+                    "save", "reset", "debug", "version"), args[0]);
         }
         // commands that take no second argument
         if (args.length == 2 && !args[0].equalsIgnoreCase("list")
                 && !args[0].equalsIgnoreCase("reload")
+                && !args[0].equalsIgnoreCase("version")
                 && !args[0].equalsIgnoreCase("wand")
                 && !args[0].equalsIgnoreCase("selection")) {
             return plugin.getArenaManager().getAllArenas().stream()
@@ -681,6 +690,7 @@ public class BridgeCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("  §b/bridge removesign §f<arena>          §7Unregister the sign you're looking at");
         sender.sendMessage("  §b/bridge selection                    §7Show current wand selection");
         sender.sendMessage("  §b/bridge debug §f<arena>               §7Dump full arena/match status");
+        sender.sendMessage("  §b/bridge version                      §7Show plugin version and loaded state");
         sender.sendMessage("  §b/bridge setpos1 §f<arena>             §7Set reset region corner 1 (legacy)");
         sender.sendMessage("  §b/bridge setpos2 §f<arena>             §7Set reset region corner 2 (legacy)");
     }

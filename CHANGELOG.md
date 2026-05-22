@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.4.1 — 2026-05-22
+### Added — Startup verification logging and `/bridge version`
+
+**Startup log** — on plugin enable, the following lines are written to console:
+```
+TheBridge v1.4.1
+Config: <absolute path to config.yml>
+debug: <true/false>
+SignListener: registered
+Arenas loaded: <N>
+Registered signs: <N>
+```
+
+**`/bridge version`** — prints the same info in-game. Requires `bridge.admin`. Added to tab completion and help text.
+
+**`TheBridgePlugin.getStatusLines()`** — shared helper that both startup logging and `/bridge version` call; returns a `List<String>` of status lines. Uses `getPluginMeta().getVersion()` (Paper 1.21 non-deprecated API) instead of `getDescription().getVersion()`.
+
+---
+
 ## v1.4.0 — 2026-05-21
 ### Investigation — Sign click hand/action diagnostic logging
 
