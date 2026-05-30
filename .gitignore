@@ -1,13 +1,24 @@
-# Gradle
+# Gradle cache
 .gradle/
+
+# Compiled class files and intermediates
+bin/
 build/classes/
+build/resources/
+build/reports/
+build/tmp/
+build/generated/
 build/sources.txt
 *.class
+
+# Javac arg files
+javac.*.args
 
 # IDE
 .idea/
 *.iml
 .vscode/
+*.code-workspace
 *.swp
 
 # OS
@@ -19,3 +30,7 @@ Thumbs.db
 
 # Lib jars — too large for git; see libs/LIBS_README.txt for setup instructions
 libs/*.jar
+
+# Review pending: FastAsyncWorldEdit-Paper-2.15.0.jar in repo root
+# This dependency jar is currently tracked. Decide in Phase 2 whether to
+# move to libs/, document in LIBS_README.txt, or remove and obtain separately.
