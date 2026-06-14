@@ -25,12 +25,14 @@ javac.*.args
 .DS_Store
 Thumbs.db
 
-# Compiled output — keep only the final jar, not intermediate class files
-# (build/TheBridge-*.jar is tracked intentionally)
+# Build output — keep only the final jar in build/libs/
+target/
+out/
+cache/
 
-# Lib jars — too large for git; see libs/LIBS_README.txt for setup instructions
+# Dependency jars — too large for git; see libs/LIBS_README.txt for setup
 libs/*.jar
 
-# Review pending: FastAsyncWorldEdit-Paper-2.15.0.jar in repo root
-# This dependency jar is currently tracked. Decide in Phase 2 whether to
-# move to libs/, document in LIBS_README.txt, or remove and obtain separately.
+# Root-level dependency jars accidentally committed — now excluded
+FastAsyncWorldEdit*.jar
+*.dependency.jar
