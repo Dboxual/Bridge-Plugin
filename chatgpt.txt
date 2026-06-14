@@ -1,0 +1,7 @@
+
+---
+[2026-06-14] BRANCH CLEANUP
+- Merged: dev → main (fast-forward, 1 commit)
+- Final main commit: c658bcc298d9eb59c2df63e51f861fa69528ab3e
+- Dev deleted: YES (local and remote)
+- Notes: Stale build jars removed; gradle wrapper and current jar added.
